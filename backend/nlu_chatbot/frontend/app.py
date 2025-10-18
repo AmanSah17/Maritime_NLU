@@ -35,18 +35,48 @@ minutes_window = st.slider("Time window for track plotting (minutes)", min_value
 
 # No vessel quick search or directory per user request
 
-if st.button("Send") and user_input:
+# Helper to send a query and update session state (used by main input and sidebar selections)
+def send_query(text: str):
     try:
-        r = requests.post("http://127.0.0.1:8000/query", json={"text": user_input}, timeout=8)
-        response = r.json().get("response", "No response.")
+        r = requests.post("http://127.0.0.1:8000/query", json={"text": text}, timeout=8)
+        resp = r.json().get("response", "No response.")
     except Exception as e:
-        response = {"message": f"Backend request failed: {e}"}
+        resp = {"message": f"Backend request failed: {e}"}
 
-    # append to conversation
-    st.session_state.chat_history.append(("User", user_input))
-    st.session_state.chat_history.append(("Bot", response))
-    # update last bot response for outside display
-    st.session_state.last_bot_response = response
+    st.session_state.chat_history.append(("User", text))
+    st.session_state.chat_history.append(("Bot", resp))
+    st.session_state.last_bot_response = resp
+
+# Main send button behaviour
+if st.button("Send") and user_input:
+    send_query(user_input)
+
+# Sidebar: Vessel directory (searchable)
+with st.sidebar:
+    st.markdown("### Vessel directory")
+    # load vessel list into session state once
+    if "vessels_list" not in st.session_state:
+        try:
+            r = requests.get("http://127.0.0.1:8000/vessels", timeout=6)
+            st.session_state.vessels_list = r.json().get("vessels", [])
+        except Exception:
+            st.session_state.vessels_list = []
+
+    if st.session_state.vessels_list:
+        search_val = st.text_input("Search vessels", key="vessel_search")
+        # filter
+        filtered = [v for v in st.session_state.vessels_list if (not search_val) or (search_val.lower() in v.lower())]
+        # show a selectbox for quick selection; limit to first 500 to keep UI snappy
+        sel = st.selectbox("Select vessel", options=filtered[:500], index=0 if filtered else None)
+        if sel:
+            if st.button("Query selected vessel"):
+                # populate main input and send query for this vessel
+                qtext = f"show last position of {sel}"
+                # also set main input field visual — store in session so user sees it
+                st.session_state['last_selected_vessel'] = sel
+                send_query(qtext)
+    else:
+        st.info("No vessel list available (backend may be down)")
 
 # Top area: show last bot response (human readable) and an interactive map area
 st.markdown("### Last response")
