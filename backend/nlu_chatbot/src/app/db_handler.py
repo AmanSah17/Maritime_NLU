@@ -50,6 +50,48 @@ class MaritimeDB:
         """
         return pd.read_sql_query(query, self.conn, params=(vessel_name_pattern, limit))
 
+    def fetch_vessel_by_name_at_or_before(self, vessel_name: str, target_dt: str) -> pd.DataFrame:
+        """Return the single row for vessel_name with BaseDateTime <= target_dt ordered by BaseDateTime DESC limit 1"""
+        query = """
+        SELECT * FROM vessel_data
+        WHERE VesselName = ? AND BaseDateTime <= ?
+        ORDER BY BaseDateTime DESC
+        LIMIT 1;
+        """
+        return pd.read_sql_query(query, self.conn, params=(vessel_name, target_dt))
+
+    def fetch_vessel_by_mmsi_at_or_before(self, mmsi: int, target_dt: str) -> pd.DataFrame:
+        query = """
+        SELECT * FROM vessel_data
+        WHERE MMSI = ? AND BaseDateTime <= ?
+        ORDER BY BaseDateTime DESC
+        LIMIT 1;
+        """
+        return pd.read_sql_query(query, self.conn, params=(int(mmsi), target_dt))
+
+    def fetch_track_ending_at(self, vessel_name: str = None, mmsi: int = None, end_dt: str = None, limit: int = 10) -> pd.DataFrame:
+        """Return up to `limit` rows for the vessel with BaseDateTime <= end_dt ordered ASC (oldest->newest)
+        If vessel_name provided, use it; otherwise use mmsi.
+        """
+        if vessel_name:
+            query = """
+            SELECT * FROM vessel_data
+            WHERE VesselName = ? AND BaseDateTime <= ?
+            ORDER BY BaseDateTime ASC
+            LIMIT ?;
+            """
+            return pd.read_sql_query(query, self.conn, params=(vessel_name, end_dt, limit))
+        elif mmsi:
+            query = """
+            SELECT * FROM vessel_data
+            WHERE MMSI = ? AND BaseDateTime <= ?
+            ORDER BY BaseDateTime ASC
+            LIMIT ?;
+            """
+            return pd.read_sql_query(query, self.conn, params=(int(mmsi), end_dt, limit))
+        else:
+            return pd.DataFrame()
+
     def fetch_vessel_by_name(self, vessel_name: str, limit: int = 1000) -> pd.DataFrame:
         query = """
         SELECT * FROM vessel_data

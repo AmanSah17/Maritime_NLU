@@ -4,6 +4,11 @@ import re
 import folium
 from streamlit_folium import st_folium
 import json
+from datetime import datetime, timedelta
+try:
+    from dateutil import parser as _dateutil_parser
+except Exception:
+    _dateutil_parser = None
 
 st.title("⚓ Maritime Vessel Monitoring Chatbot")
 
@@ -24,6 +29,9 @@ if "map_to_plot" not in st.session_state:
     st.session_state.map_to_plot = None
 
 user_input = st.text_input("Ask about a vessel:")
+
+# small timeline slider to control how many minutes of track to show when plotting
+minutes_window = st.slider("Time window for track plotting (minutes)", min_value=1, max_value=120, value=10, step=1)
 
 # No vessel quick search or directory per user request
 
@@ -99,9 +107,38 @@ with map_col:
         if coords:
             # center on most recent point
             center = [coords[0][0], coords[0][1]]
+            # filter coords by minutes_window (keep only points within the window relative to most recent)
+            def _parse_dt(s):
+                if s is None:
+                    return None
+                if _dateutil_parser is not None:
+                    try:
+                        return _dateutil_parser.parse(s)
+                    except Exception:
+                        pass
+                # try common formats
+                for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+                    try:
+                        return datetime.strptime(s, fmt)
+                    except Exception:
+                        continue
+                return None
+
+            most_recent_dt = _parse_dt(coords[0][2])
+            if most_recent_dt is not None:
+                cutoff = most_recent_dt - timedelta(minutes=int(minutes_window))
+                filtered = []
+                for lat, lon, when in coords:
+                    dt = _parse_dt(when)
+                    if dt is None or dt >= cutoff:
+                        filtered.append((lat, lon, when))
+                coords_to_plot = filtered if filtered else coords
+            else:
+                coords_to_plot = coords
+
             m = folium.Map(location=center, zoom_start=10, tiles='OpenStreetMap')
             # add icon markers for each point
-            for lat, lon, when in coords:
+            for lat, lon, when in coords_to_plot:
                 folium.Marker(location=[lat, lon], popup=str(when), icon=folium.Icon(color='blue', icon='ship', prefix='fa')).add_to(m)
 
             st_folium(m, width=800, height=500)

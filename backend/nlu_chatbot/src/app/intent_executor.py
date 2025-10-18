@@ -1,18 +1,25 @@
 from db_handler import MaritimeDB
 from typing import Dict
+import re
 import pandas as pd
 import math
 from datetime import datetime, timedelta
 from typing import Optional
+import difflib
+
+# maximum tolerance when matching a requested datetime (minutes)
+TIME_TOLERANCE_MINUTES = 30
 
 class IntentExecutor:
-    def __init__(self, db: MaritimeDB):
+    def __init__(self, db: MaritimeDB, time_tolerance_minutes: int = 30):
         self.db = db
+        self.time_tolerance_minutes = time_tolerance_minutes
 
     def handle(self, parsed: Dict):
         intent = parsed.get("intent")
         vessel_name = parsed.get("vessel_name")
         identifiers = parsed.get("identifiers", {})
+        requested_dt_str = parsed.get("datetime")
 
         # Prioritize MMSI if provided
         mmsi = identifiers.get("mmsi")
@@ -43,8 +50,94 @@ class IntentExecutor:
                         best = process.extractOne(vessel_name, vessel_candidates)
                         if best and best[1] > 80:
                             df = self.db.fetch_vessel_by_name(best[0], limit=1000)
+                            # annotate that we matched a similar name
+                            if not df.empty:
+                                df['matched_name'] = best[0]
+                                df['match_score'] = best[1]
                     except Exception:
-                        pass
+                        # RapidFuzz not available; try Python stdlib difflib fallback
+                        try:
+                            vessel_candidates = self.db.get_all_vessel_names()
+                            # get_close_matches returns list of close matches; cutoff 0.7
+                            cm = difflib.get_close_matches(vessel_name, vessel_candidates, n=1, cutoff=0.7)
+                            if cm:
+                                candidate = cm[0]
+                                df = self.db.fetch_vessel_by_name(candidate, limit=1000)
+                                if not df.empty:
+                                    df['matched_name'] = candidate
+                                    df['match_score'] = None
+                        except Exception:
+                            pass
+
+            # If a datetime was requested, try to find the record closest to that time
+            if requested_dt_str:
+                # Try DB-level fast lookup first
+                try:
+                    # If vessel is numeric -> MMSI
+                    if mmsi:
+                        row_df = self.db.fetch_vessel_by_mmsi_at_or_before(int(mmsi), str(requested_dt_str))
+                    else:
+                        row_df = self.db.fetch_vessel_by_name_at_or_before(vessel_name, str(requested_dt_str))
+
+                    if not row_df.empty:
+                        sel_row = row_df.iloc[0]
+                        # fetch track ending at this timestamp
+                        track_df = self.db.fetch_track_ending_at(vessel_name=vessel_name if not mmsi else None, mmsi=int(mmsi) if mmsi else None, end_dt=sel_row.BaseDateTime, limit=10)
+                        track = track_df.to_dict(orient='records') if not track_df.empty else []
+                        return {
+                            "VesselName": sel_row.VesselName,
+                            "LAT": float(sel_row.LAT),
+                            "LON": float(sel_row.LON),
+                            "SOG": float(sel_row.SOG),
+                            "COG": float(sel_row.COG),
+                            "BaseDateTime": sel_row.BaseDateTime,
+                            "track": track[::-1]
+                        }
+                    else:
+                        # No row <= requested_dt; try nearest within tolerance using a small SQL window
+                        # We'll try a symmetric window of +/- time_tolerance_minutes around the requested time and pick nearest
+                        try:
+                            # build window
+                            try:
+                                target_dt = pd.to_datetime(requested_dt_str)
+                            except Exception:
+                                target_dt = None
+                            if target_dt is None:
+                                # last-resort: fall back to pandas logic
+                                raise RuntimeError("cannot parse target_dt")
+
+                            start_window = (target_dt - pd.Timedelta(minutes=self.time_tolerance_minutes)).strftime('%Y-%m-%d %H:%M:%S')
+                            end_window = (target_dt + pd.Timedelta(minutes=self.time_tolerance_minutes)).strftime('%Y-%m-%d %H:%M:%S')
+                            if mmsi:
+                                window_q = self.db.fetch_by_time_range(start_window, end_window, limit=1000)
+                                window_q = window_q[window_q['MMSI'] == int(mmsi)]
+                            else:
+                                window_q = self.db.fetch_by_time_range(start_window, end_window, limit=1000)
+                                window_q = window_q[window_q['VesselName'] == vessel_name]
+
+                            if not window_q.empty:
+                                window_q['BaseDateTime_dt'] = pd.to_datetime(window_q['BaseDateTime'], errors='coerce')
+                                window_q['absdiff'] = (window_q['BaseDateTime_dt'] - target_dt).abs()
+                                nearest = window_q.loc[window_q['absdiff'].idxmin()]
+                                nearest_dt = nearest.BaseDateTime
+                                # fetch track ending at nearest_dt
+                                track_df = self.db.fetch_track_ending_at(vessel_name=vessel_name if not mmsi else None, mmsi=int(mmsi) if mmsi else None, end_dt=nearest_dt, limit=10)
+                                track = track_df.to_dict(orient='records') if not track_df.empty else []
+                                return {
+                                    "VesselName": nearest.VesselName,
+                                    "LAT": float(nearest.LAT),
+                                    "LON": float(nearest.LON),
+                                    "SOG": float(nearest.SOG),
+                                    "COG": float(nearest.COG),
+                                    "BaseDateTime": nearest.BaseDateTime,
+                                    "track": track[::-1]
+                                }
+                        except Exception:
+                            # fall back to previous pandas logic if SQL path fails
+                            pass
+                except Exception:
+                    # outer SQL-path failure; proceed to pandas-based fallback below
+                    pass
 
         elif intent == "VERIFY":
             # Verify consistency across last 3 points

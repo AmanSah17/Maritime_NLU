@@ -27,14 +27,20 @@ executor = IntentExecutor(db)
 
 app = FastAPI(title="Maritime Vessel Monitoring API")
 
-# allow all origins for the Streamlit frontend (adjust in production)
+# allow origins for development frontends (adjust in production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Optional: serve React build static files if present under frontend-react/build
+from fastapi.staticfiles import StaticFiles
+react_build = os.path.join(base_dir, 'frontend-react', 'build')
+if os.path.isdir(react_build):
+    app.mount('/', StaticFiles(directory=react_build, html=True), name='react')
 
 class QueryRequest(BaseModel):
     text: str
