@@ -1,11 +1,16 @@
 # main_query_engine.py
-from db_handler import MaritimeDB
-from nlp_interpreter import MaritimeNLPInterpreter
-from intent_executor import IntentExecutor
+import os
+from .db_handler import MaritimeDB
+from .nlp_interpreter import MaritimeNLPInterpreter
+from .intent_executor import IntentExecutor
+
 
 def process_natural_query(query: str):
-    # 1️⃣ Connect to DB
-    db = MaritimeDB("backend\nlu_chatbot\maritime_data.db")
+    # 1️⃣ Connect to DB (resolve path relative to this file)
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    # base_dir resolves to .../backend/nlu_chatbot; maritime_data.db lives there
+    db_path = os.path.join(base_dir, "maritime_data.db")
+    db = MaritimeDB(db_path)
 
     # 2️⃣ Load vessel names
     vessel_list = db.get_all_vessel_names()

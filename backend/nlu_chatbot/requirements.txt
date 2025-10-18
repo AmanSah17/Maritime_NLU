@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+streamlit
+pandas
+numpy
+folium
+streamlit-folium
+rapidfuzz
+streamlit-aggrid
