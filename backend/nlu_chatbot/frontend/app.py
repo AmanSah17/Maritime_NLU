@@ -38,9 +38,16 @@ minutes_window = st.slider("Time window for track plotting (minutes)", min_value
 # Helper to send a query and update session state (used by main input and sidebar selections)
 def send_query(text: str):
     try:
-        r = requests.post("http://127.0.0.1:8000/query", json={"text": text}, timeout=8)
+        r = requests.post("http://127.0.0.1:8000/query", json={"text": text}, timeout=20)
+        parsed = r.json().get("parsed", {})
         resp = r.json().get("response", "No response.")
+        # log the search on server
+        try:
+            requests.post("http://127.0.0.1:8000/admin/log_search", params={"query": text}, timeout=3)
+        except Exception:
+            pass
     except Exception as e:
+        parsed = {}
         resp = {"message": f"Backend request failed: {e}"}
 
     st.session_state.chat_history.append(("User", text))
@@ -54,29 +61,29 @@ if st.button("Send") and user_input:
 # Sidebar: Vessel directory (searchable)
 with st.sidebar:
     st.markdown("### Vessel directory")
-    # load vessel list into session state once
-    if "vessels_list" not in st.session_state:
-        try:
-            r = requests.get("http://127.0.0.1:8000/vessels", timeout=6)
-            st.session_state.vessels_list = r.json().get("vessels", [])
-        except Exception:
-            st.session_state.vessels_list = []
+    # provide a typed-prefix search to avoid fetching all names
+    prefix = st.text_input("Search vessels (type a few characters)", key="vessel_search")
 
-    if st.session_state.vessels_list:
-        search_val = st.text_input("Search vessels", key="vessel_search")
-        # filter
-        filtered = [v for v in st.session_state.vessels_list if (not search_val) or (search_val.lower() in v.lower())]
-        # show a selectbox for quick selection; limit to first 500 to keep UI snappy
-        sel = st.selectbox("Select vessel", options=filtered[:500], index=0 if filtered else None)
-        if sel:
-            if st.button("Query selected vessel"):
-                # populate main input and send query for this vessel
+    @st.cache_data(ttl=60)
+    def fetch_vessel_prefix(q: str, limit: int = 20):
+        try:
+            r = requests.get("http://127.0.0.1:8000/vessels/search", params={"q": q, "limit": limit}, timeout=6)
+            return r.json().get("vessels", [])
+        except Exception:
+            return []
+
+    if prefix and len(prefix.strip()) >= 2:
+        candidates = fetch_vessel_prefix(prefix.strip(), limit=20)
+        if candidates:
+            sel = st.selectbox("Matching vessels", options=candidates)
+            if sel and st.button("Query selected vessel"):
                 qtext = f"show last position of {sel}"
-                # also set main input field visual — store in session so user sees it
                 st.session_state['last_selected_vessel'] = sel
                 send_query(qtext)
+        else:
+            st.info("No matches found for that prefix")
     else:
-        st.info("No vessel list available (backend may be down)")
+        st.info("Type at least 2 characters above to search vessel names (server-side prefix search)")
 
 # Top area: show last bot response (human readable) and an interactive map area
 st.markdown("### Last response")

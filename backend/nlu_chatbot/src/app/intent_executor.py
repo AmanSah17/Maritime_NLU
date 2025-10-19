@@ -91,7 +91,8 @@ class IntentExecutor:
                             "SOG": float(sel_row.SOG),
                             "COG": float(sel_row.COG),
                             "BaseDateTime": sel_row.BaseDateTime,
-                            "track": track[::-1]
+                            "track": track[::-1],
+                            "message": f"Last known position for {sel_row.VesselName} at {sel_row.BaseDateTime}: {sel_row.LAT}, {sel_row.LON} (MMSI {int(sel_row.MMSI)})"
                         }
                     else:
                         # No row <= requested_dt; try nearest within tolerance using a small SQL window
@@ -149,6 +150,7 @@ class IntentExecutor:
 
             return self._verify_movement(df)
 
+
         elif intent == "PREDICT":
             # Predict position after given time horizon (e.g., 'after 30 minutes')
             # Extract time horizon from parsed (assumed to be like 'after 30 minutes')
@@ -171,6 +173,7 @@ class IntentExecutor:
             # Return last known plus last 10 track points (most recent first)
             last_row = df.iloc[-1]
             track = df.tail(10).to_dict(orient='records')
+            msg = f"Last known position for {last_row.VesselName} at {last_row.BaseDateTime}: {last_row.LAT}, {last_row.LON} (MMSI {int(last_row.MMSI)})"
             return {
                 "VesselName": last_row.VesselName,
                 "LAT": float(last_row.LAT),
@@ -178,7 +181,8 @@ class IntentExecutor:
                 "SOG": float(last_row.SOG),
                 "COG": float(last_row.COG),
                 "BaseDateTime": last_row.BaseDateTime,
-                "track": track[::-1]  # return newest first
+                "track": track[::-1],  # return newest first
+                "message": msg
             }
 
         return {"message": "No data found"}
