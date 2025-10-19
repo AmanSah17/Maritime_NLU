@@ -1,0 +1,6 @@
+/COM,ANSYS RELEASE 2025 R1           BUILD 25.1      UP20241202       02:54:34
+
+ *** ERROR ***                           CP =       1.953   TIME= 02:54:37
+ Data file F:\Maritime_NLU\backend\backend\maritime_data.db has          
+ incorrect format, is missing READ/WRITE permission, or is empty for     
+ RESUME.                                                                 

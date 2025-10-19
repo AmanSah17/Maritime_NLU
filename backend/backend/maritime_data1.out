@@ -1,0 +1,125 @@
+
+ Ansys Mechanical Enterprise                       
+
+
+ *------------------------------------------------------------------*
+ |                                                                  |
+ |   W E L C O M E   T O   T H E   A N S Y S (R)  P R O G R A M     |
+ |                                                                  |
+ *------------------------------------------------------------------*
+
+
+
+
+ ***************************************************************
+ *         ANSYS MAPDL 2025 R1          LEGAL NOTICES          *
+ ***************************************************************
+ *                                                             *
+ * Copyright 1971-2025 Ansys, Inc.  All rights reserved.       *
+ * Unauthorized use, distribution or duplication is            *
+ * prohibited.                                                 *
+ *                                                             *
+ * Ansys is a registered trademark of Ansys, Inc. or its       *
+ * subsidiaries in the United States or other countries.       *
+ * See the Ansys, Inc. online documentation or the Ansys, Inc. *
+ * documentation CD or online help for the complete Legal      *
+ * Notice.                                                     *
+ *                                                             *
+ ***************************************************************
+ *                                                             *
+ * THIS ANSYS SOFTWARE PRODUCT AND PROGRAM DOCUMENTATION       *
+ * INCLUDE TRADE SECRETS AND CONFIDENTIAL AND PROPRIETARY      *
+ * PRODUCTS OF ANSYS, INC., ITS SUBSIDIARIES, OR LICENSORS.    *
+ * The software products and documentation are furnished by    *
+ * Ansys, Inc. or its subsidiaries under a software license    *
+ * agreement that contains provisions concerning               *
+ * non-disclosure, copying, length and nature of use,          *
+ * compliance with exporting laws, warranties, disclaimers,    *
+ * limitations of liability, and remedies, and other           *
+ * provisions.  The software products and documentation may be *
+ * used, disclosed, transferred, or copied only in accordance  *
+ * with the terms and conditions of that software license      *
+ * agreement.                                                  *
+ *                                                             *
+ * Ansys, Inc. is a UL registered                              *
+ * ISO 9001:2015 company.                                      *
+ *                                                             *
+ ***************************************************************
+ *                                                             *
+ * This product is subject to U.S. laws governing export and   *
+ * re-export.                                                  *
+ *                                                             *
+ * For U.S. Government users, except as specifically granted   *
+ * by the Ansys, Inc. software license agreement, the use,     *
+ * duplication, or disclosure by the United States Government  *
+ * is subject to restrictions stated in the Ansys, Inc.        *
+ * software license agreement and FAR 12.212 (for non-DOD      *
+ * licenses).                                                  *
+ *                                                             *
+ ***************************************************************
+
+ 2025 R1 
+     
+ Point Releases and Patches installed:   
+     
+ Ansys Service Pack 2025 R1.32   
+ Discovery (full install) 2025 R1.32 
+ Core WB Files 2025 R1.32
+ Ansys Dynamic Reporting 2025 R1.32  
+ CFX (includes CFD-Post) 2025 R1.32  
+ Chemkin 2025 R1.32  
+ EnSight 2025 R1.32  
+ FENSAP-ICE 2025 R1.32   
+ Fluent (includes CFD-Post) 2025 R1.32   
+ Polyflow (includes CFD-Post) 2025 R1.32 
+ Forte (includes EnSight) 2025 R1.32 
+ Rocky 2025 R1.32
+ TurboGrid 2025 R1.32
+ ACIS Geometry Interface 2025 R1.32  
+ AutoCAD Geometry Interface 2025 R1.32   
+ Catia, Version 4 Geometry Interface 2025 R1.32  
+ Catia, Version 5 Geometry Interface 2025 R1.32  
+ Catia, Version 6 Geometry Interface 2025 R1.32  
+ Creo Elements/Direct Modeling Geometry Interface 2025 R1.32 
+ Creo Parametric Geometry Interface 2025 R1.32   
+ Inventor Geometry Interface 2025 R1.32  
+ JTOpen Geometry Interface 2025 R1.32
+ NX Geometry Interface 2025 R1.32
+ Parasolid Geometry Interface  2025 R1.32
+ Solid Edge Geometry Interface 2025 R1.32
+ SOLIDWORKS Geometry Interface 2025 R1.32
+ Speos 2025 R1.32
+ SpaceClaim 2025 R1.32   
+ Speos RPC 2025 R1.32
+ Aqwa 2025 R1.32 
+ Autodyn 2025 R1.32  
+ Material Calibration App 2025 R1.32 
+ Mechanical Products 2025 R1.32  
+ Motion 2025 R1.32   
+ Academic Student 2025 R1.32 
+
+
+          *****  MAPDL COMMAND LINE ARGUMENTS  *****
+  INITIAL JOBNAME              = maritime_data                                                                                                                                                                                                                                           
+  DISTRIBUTED MEMORY PARALLEL REQUESTED
+       4 PARALLEL PROCESSES REQUESTED WITH SINGLE THREAD PER PROCESS
+    TOTAL OF     4 CORES REQUESTED
+  MPI OPTION                   = INTELMPI
+  START-UP FILE MODE           = NOREAD
+  STOP FILE MODE               = NOREAD
+  MODEL FILE NAME              = F:\Maritime_NLU\backend\backend\maritime_data.db                                                                                                                                                                                                                    
+  GRAPHICS DEVICE REQUESTED    = win32   
+  GRAPHICAL ENTRY              = YES   
+  LANGUAGE                     = en-us               
+  INITIAL DIRECTORY = F:\Maritime_NLU\backend\backend
+
+ RELEASE= 2025 R1              BUILD= 25.1      UP20241202   VERSION=WINDOWS x64 
+ CURRENT JOBNAME=maritime_data1  02:54:36  OCT 20, 2025 CP=      1.547
+
+
+ RESUME ANSYS DATA FROM FILE NAME=F:\Maritime_NLU\backend\backend\maritime_data.db                                                                                                                                                                                                                    
+
+ *** ERROR ***                           CP =       1.891   TIME= 02:54:37
+ Data file F:\Maritime_NLU\backend\backend\maritime_data.db has          
+ incorrect format, is missing READ/WRITE permission, or is empty for     
+ RESUME.                                                                 
