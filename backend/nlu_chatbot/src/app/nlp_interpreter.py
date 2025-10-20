@@ -2,7 +2,7 @@ import spacy
 from spacy.matcher import Matcher, PhraseMatcher
 import re
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 try:
     import dateparser
@@ -308,11 +308,25 @@ class MaritimeNLPInterpreter:
                 pass
 
         # 2) Try exact vessel-list matches using whole-word matching (fallback)
+        # Sort by length (longest first) to match longer names before shorter ones
         for vessel in sorted(self.vessel_list, key=len, reverse=True):
             if not vessel:
                 continue
-            pattern = r"\b" + re.escape(vessel.lower()) + r"\b"
+            vessel_lower = vessel.lower()
+
+            # Try multiple matching strategies:
+            # a) Exact substring match (for vessels with special chars like "+BRAVA")
+            if vessel_lower in text_lower:
+                return vessel.title()
+
+            # b) Word boundary match (for normal vessel names)
+            pattern = r"\b" + re.escape(vessel_lower) + r"\b"
             if re.search(pattern, text_lower):
+                return vessel.title()
+
+            # c) Match with optional special characters before/after
+            pattern_special = r"[\+\-\s]*" + re.escape(vessel_lower) + r"[\+\-\s]*"
+            if re.search(pattern_special, text_lower):
                 return vessel.title()
 
         # 3) Fallback to spaCy NER for ORG/PRODUCT
@@ -353,5 +367,4 @@ class MaritimeNLPInterpreter:
         if trailing_mmsi and not identifiers["mmsi"]:
             identifiers["mmsi"] = trailing_mmsi.group(2)
 
-        return identifiers
         return identifiers

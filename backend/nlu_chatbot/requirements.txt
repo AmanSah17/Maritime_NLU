@@ -7,3 +7,10 @@ folium
 streamlit-folium
 rapidfuzz
 streamlit-aggrid
+geopandas
+shapely
+aiosqlite
+spacy
+dateparser
+python-dateutil
+sqlalchemy

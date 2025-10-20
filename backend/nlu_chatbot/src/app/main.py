@@ -6,6 +6,9 @@ from concurrent.futures import ThreadPoolExecutor
 import uuid
 import pandas as pd
 from fastapi.middleware.cors import CORSMiddleware
+import json
+import math
+from fastapi.responses import JSONResponse
 
 # Ensure the current `app` directory is importable when uvicorn executes the module
 # This avoids "attempted relative import with no known parent package" when running
@@ -17,6 +20,7 @@ if current_dir not in sys.path:
 from db_handler import MaritimeDB
 from nlp_interpreter import MaritimeNLPInterpreter
 from intent_executor import IntentExecutor
+from response_formatter import ResponseFormatter
 import time
 import logging
 
@@ -27,9 +31,33 @@ base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 # Allow overriding the DB file via environment for testing smaller subsets
 default_db = os.path.join(base_dir, "maritime_data.db")
 db_path = os.environ.get("BACKEND_DB_PATH", default_db)
+
+# If main DB is empty or doesn't exist, try sample DB
+try:
+    if not os.path.exists(db_path):
+        raise FileNotFoundError(f"DB not found: {db_path}")
+
+    # Check if DB has data by trying to connect and query
+    temp_db = MaritimeDB(db_path)
+    vessel_count = len(temp_db.get_all_vessel_names())
+
+    if vessel_count == 0:
+        logging.warning(f"Main DB is empty ({vessel_count} vessels)")
+        sample_db = os.path.join(base_dir, "maritime_sample_0104.db")
+        if os.path.exists(sample_db):
+            logging.info(f"Switching to sample DB: {sample_db}")
+            db_path = sample_db
+except Exception as e:
+    logging.warning(f"Error checking main DB: {e}")
+    sample_db = os.path.join(base_dir, "maritime_sample_0104.db")
+    if os.path.exists(sample_db):
+        logging.info(f"Switching to sample DB: {sample_db}")
+        db_path = sample_db
+
 db = MaritimeDB(db_path)
 db.create_tables()  # ensure table exists
 vessel_list = db.get_all_vessel_names()
+logging.info(f"✅ Loaded {len(vessel_list)} vessels from {db_path}")
 
 nlp_engine = MaritimeNLPInterpreter(vessel_list=vessel_list)
 executor = IntentExecutor(db)
@@ -66,13 +94,38 @@ class JobRequest(BaseModel):
     end_dt: str | None = None
 
 
+def clean_nan_values(obj):
+    """Recursively replace NaN and Inf values with None for JSON serialization"""
+    if isinstance(obj, dict):
+        return {k: clean_nan_values(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [clean_nan_values(item) for item in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    else:
+        return obj
+
+
 @app.post("/query")
 async def nlp_query(request: QueryRequest):
     # Keep parsing synchronous (spaCy) but the endpoint is async-friendly to allow DB async calls
     parsed = nlp_engine.parse_query(request.text)
     # executor may call DB; allow it to run (it will use sync DB unless refactored)
     response = executor.handle(parsed)
-    return {"parsed": parsed, "response": response}
+
+    # Clean NaN values from response before formatting
+    response = clean_nan_values(response)
+
+    # Format response into human-friendly text
+    formatted_text = ResponseFormatter.format_response(parsed.get("intent", ""), response)
+
+    return {
+        "parsed": parsed,
+        "response": response,
+        "formatted_response": formatted_text
+    }
 
 
 @app.get("/health")

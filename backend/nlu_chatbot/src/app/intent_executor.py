@@ -1,10 +1,13 @@
-from db_handler import MaritimeDB
-from typing import Dict
+try:
+    from .db_handler import MaritimeDB
+except ImportError:
+    from db_handler import MaritimeDB
+
+from typing import Dict, Optional
 import re
 import pandas as pd
 import math
 from datetime import datetime, timedelta
-from typing import Optional
 import difflib
 
 # maximum tolerance when matching a requested datetime (minutes)

@@ -41,6 +41,12 @@ def send_query(text: str):
         r = requests.post("http://127.0.0.1:8000/query", json={"text": text}, timeout=20)
         parsed = r.json().get("parsed", {})
         resp = r.json().get("response", "No response.")
+        formatted_response = r.json().get("formatted_response", "")
+
+        # Store formatted response for display
+        if formatted_response:
+            resp['_formatted_text'] = formatted_response
+
         # log the search on server
         try:
             requests.post("http://127.0.0.1:8000/admin/log_search", params={"query": text}, timeout=3)
@@ -96,16 +102,21 @@ else:
         if resp.get("message"):
             st.error(resp.get("message"))
         else:
-            vessel = resp.get('VesselName', 'unknown')
-            lat = resp.get('LAT')
-            lon = resp.get('LON')
-            ts = resp.get('BaseDateTime') or resp.get('timestamp')
-            summary = f"Vessel: {vessel}"
-            if lat is not None and lon is not None:
-                summary += f", Position: {lat}, {lon}"
-            if ts:
-                summary += f", Time: {ts}"
-            st.success(summary)
+            # Show formatted response if available
+            if resp.get('_formatted_text'):
+                st.success(resp.get('_formatted_text'))
+            else:
+                # Fallback to manual formatting
+                vessel = resp.get('VesselName', 'unknown')
+                lat = resp.get('LAT')
+                lon = resp.get('LON')
+                ts = resp.get('BaseDateTime') or resp.get('timestamp')
+                summary = f"Vessel: {vessel}"
+                if lat is not None and lon is not None:
+                    summary += f", Position: {lat}, {lon}"
+                if ts:
+                    summary += f", Time: {ts}"
+                st.success(summary)
 
             # If there's a single point (show), allow plotting that point on the map
             if lat is not None and lon is not None:
@@ -203,16 +214,21 @@ with st.container():
                     if msg.get('message'):
                         st.markdown(f"**Bot:** {msg.get('message')}")
                     else:
-                        vessel = msg.get('VesselName', 'unknown')
-                        lat = msg.get('LAT')
-                        lon = msg.get('LON')
-                        ts = msg.get('BaseDateTime') or msg.get('timestamp')
-                        summary = f"Vessel: {vessel}"
-                        if lat is not None and lon is not None:
-                            summary += f", Position: {lat}, {lon}"
-                        if ts:
-                            summary += f", Time: {ts}"
-                        st.markdown(f"**Bot:** {summary}")
+                        # Show formatted response if available
+                        if msg.get('_formatted_text'):
+                            st.markdown(f"**Bot:** {msg.get('_formatted_text')}")
+                        else:
+                            # Fallback to manual formatting
+                            vessel = msg.get('VesselName', 'unknown')
+                            lat = msg.get('LAT')
+                            lon = msg.get('LON')
+                            ts = msg.get('BaseDateTime') or msg.get('timestamp')
+                            summary = f"Vessel: {vessel}"
+                            if lat is not None and lon is not None:
+                                summary += f", Position: {lat}, {lon}"
+                            if ts:
+                                summary += f", Time: {ts}"
+                            st.markdown(f"**Bot:** {summary}")
 
                         # store track payload under message index so we can plot later
                         if 'track' in msg and isinstance(msg['track'], list) and len(msg['track'])>0:
@@ -220,7 +236,7 @@ with st.container():
                             if st.button(f"Plot track (last 10 min) — message {idx}", key=f"plot_{idx}"):
                                 st.session_state.map_to_plot = {
                                     "type": "track",
-                                    "vessel": vessel,
+                                    "vessel": msg.get('VesselName', 'unknown'),
                                     "points": msg['track']
                                 }
                         else:
