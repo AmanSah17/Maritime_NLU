@@ -1,6 +1,6 @@
 """
 Maritime Defense Dashboard - Authentication & Session Management
-Handles JWT tokenization and session state persistence
+Handles JWT tokenization and session state persistence with cookie support
 """
 
 import streamlit as st
@@ -10,6 +10,7 @@ import hmac
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Any
 import base64
+from streamlit_cookies_controller import CookieController
 
 class AuthManager:
     """Manages JWT tokens and session state for admin users"""
@@ -165,7 +166,7 @@ class AuthManager:
         """Restore session state from storage"""
         if "session_backup" in st.session_state:
             backup = st.session_state.session_backup
-            
+
             # Verify token is still valid
             if backup.get("auth_token"):
                 payload = AuthManager.verify_jwt_token(backup["auth_token"])
@@ -176,8 +177,102 @@ class AuthManager:
                     st.session_state.dashboard_state = backup.get("dashboard_state", {})
                     st.session_state.user_preferences = backup.get("user_preferences", {})
                     return True
-        
+
         return False
+
+    @staticmethod
+    def load_session_from_storage():
+        """Alias for restore_session_from_storage"""
+        return AuthManager.restore_session_from_storage()
+
+    @staticmethod
+    def save_to_cookies():
+        """Save authentication token to browser cookies for persistence"""
+        try:
+            controller = CookieController()
+
+            # Set cookie with 7-day expiration
+            expires = datetime.utcnow() + timedelta(days=7)
+
+            if st.session_state.get("auth_token"):
+                controller.set(
+                    "auth_token",
+                    st.session_state.auth_token,
+                    expires=expires,
+                    max_age=7 * 86400,  # 7 days in seconds
+                    path="/",
+                    same_site="lax"
+                )
+
+            if st.session_state.get("username"):
+                controller.set(
+                    "username",
+                    st.session_state.username,
+                    expires=expires,
+                    max_age=7 * 86400,
+                    path="/",
+                    same_site="lax"
+                )
+
+            # Save authentication status
+            controller.set(
+                "authenticated",
+                str(st.session_state.get("authenticated", False)),
+                expires=expires,
+                max_age=7 * 86400,
+                path="/",
+                same_site="lax"
+            )
+
+            return True
+        except Exception as e:
+            print(f"Error saving to cookies: {e}")
+            return False
+
+    @staticmethod
+    def restore_from_cookies():
+        """Restore authentication from browser cookies"""
+        try:
+            controller = CookieController()
+            cookies = controller.getAll()
+
+            if not cookies:
+                return False
+
+            auth_token = cookies.get("auth_token")
+            username = cookies.get("username")
+            authenticated = cookies.get("authenticated") == "True"
+
+            if auth_token and username and authenticated:
+                # Verify token is still valid
+                payload = AuthManager.verify_jwt_token(auth_token)
+                if payload:
+                    st.session_state.auth_token = auth_token
+                    st.session_state.username = username
+                    st.session_state.authenticated = True
+                    return True
+                else:
+                    # Token expired, clear cookies
+                    AuthManager.clear_cookies()
+                    return False
+
+            return False
+        except Exception as e:
+            print(f"Error restoring from cookies: {e}")
+            return False
+
+    @staticmethod
+    def clear_cookies():
+        """Clear authentication cookies"""
+        try:
+            controller = CookieController()
+            controller.remove("auth_token")
+            controller.remove("username")
+            controller.remove("authenticated")
+            return True
+        except Exception as e:
+            print(f"Error clearing cookies: {e}")
+            return False
     
     @staticmethod
     def update_interaction_history(action: str, details: Dict[str, Any]):
@@ -206,7 +301,7 @@ class AuthManager:
     
     @staticmethod
     def logout():
-        """Logout user and clear session"""
+        """Logout user and clear session and cookies"""
         st.session_state.auth_token = None
         st.session_state.authenticated = False
         st.session_state.username = None
@@ -217,6 +312,9 @@ class AuthManager:
             "last_update": None,
             "interaction_history": []
         }
+
+        # Clear cookies
+        AuthManager.clear_cookies()
 
 
 class SessionManager:

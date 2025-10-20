@@ -21,59 +21,62 @@ class UserDatabase:
         self.init_db()
     
     def get_connection(self):
-        """Get database connection"""
-        if self.conn is None:
-            self.conn = sqlite3.connect(self.DB_PATH)
-            self.conn.row_factory = sqlite3.Row
-        return self.conn
+        """Get database connection with thread-safe settings"""
+        # Always create a new connection for thread safety with Streamlit
+        conn = sqlite3.connect(self.DB_PATH, check_same_thread=False, timeout=10.0)
+        conn.row_factory = sqlite3.Row
+        return conn
     
     def init_db(self):
         """Initialize database tables"""
         conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        # Create users table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                full_name TEXT,
-                role TEXT DEFAULT 'user',
-                is_active BOOLEAN DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_login TIMESTAMP,
-                login_count INTEGER DEFAULT 0
-            )
-        """)
-        
-        # Create login history table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS login_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                logout_time TIMESTAMP,
-                ip_address TEXT,
-                user_agent TEXT,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )
-        """)
-        
-        # Create audit log table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS audit_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                action TEXT NOT NULL,
-                details TEXT,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )
-        """)
-        
-        conn.commit()
-        
+        try:
+            cursor = conn.cursor()
+
+            # Create users table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    full_name TEXT,
+                    role TEXT DEFAULT 'user',
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_login TIMESTAMP,
+                    login_count INTEGER DEFAULT 0
+                )
+            """)
+
+            # Create login history table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS login_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    logout_time TIMESTAMP,
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+
+            # Create audit log table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    action TEXT NOT NULL,
+                    details TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+
+            conn.commit()
+        finally:
+            conn.close()
+
         # Create default admin user if not exists
         self.create_default_admin()
     
@@ -84,6 +87,7 @@ class UserDatabase:
 
         # Check if admin already exists
         if not self.user_exists(admin_email):
+            conn = None
             try:
                 conn = self.get_connection()
                 cursor = conn.cursor()
@@ -99,6 +103,9 @@ class UserDatabase:
                 print(f"✅ Default admin created: {admin_email}")
             except Exception as e:
                 print(f"Note: Admin user may already exist: {e}")
+            finally:
+                if conn:
+                    conn.close()
     
     @staticmethod
     def hash_password(password: str) -> str:
@@ -128,49 +135,55 @@ class UserDatabase:
     def user_exists(self, email: str) -> bool:
         """Check if user exists"""
         conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
-        return cursor.fetchone() is not None
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+            return cursor.fetchone() is not None
+        finally:
+            conn.close()
     
-    def register_user(self, email: str, password: str, full_name: str = "", 
+    def register_user(self, email: str, password: str, full_name: str = "",
                      role: str = "user") -> Tuple[bool, str]:
         """Register a new user"""
-        
+
         # Validate email
         if not self.validate_email(email):
             return False, "Invalid email format"
-        
+
         # Validate password
         is_valid, message = self.validate_password(password)
         if not is_valid:
             return False, message
-        
+
         # Check if user already exists
         if self.user_exists(email):
             return False, "Email already registered"
-        
+
+        conn = None
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
-            
+
             password_hash = self.hash_password(password)
-            
+
             cursor.execute("""
                 INSERT INTO users (email, password_hash, full_name, role)
                 VALUES (?, ?, ?, ?)
             """, (email, password_hash, full_name, role))
-            
+
             conn.commit()
-            
+
             # Log action
             user_id = cursor.lastrowid
             self.log_action(user_id, "user_registered", f"Email: {email}")
-            
+
             return True, "User registered successfully"
-        
+
         except Exception as e:
             return False, f"Registration error: {str(e)}"
+        finally:
+            if conn:
+                conn.close()
     
     def authenticate_user(self, email: str, password: str) -> Tuple[bool, Optional[Dict]]:
         """Authenticate user with email and password"""

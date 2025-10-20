@@ -79,6 +79,10 @@ h1, h2, h3 {
 # Initialize session state
 AuthManager.init_session_state()
 
+# Try to restore from cookies first (on page load)
+if not st.session_state.get("authenticated"):
+    AuthManager.restore_from_cookies()
+
 # Check if already logged in
 if st.session_state.get("authenticated"):
     st.success(f"✅ Already logged in as {st.session_state.username}")
@@ -115,10 +119,14 @@ else:
                         st.session_state.username = email
                         st.session_state.user_data = user_data
 
-                        # Save session
+                        # Save session to storage
                         AuthManager.save_session_to_storage()
 
+                        # Save to cookies for persistence across browser refresh
+                        AuthManager.save_to_cookies()
+
                         st.success(f"✅ Welcome, {user_data.get('full_name', email)}!")
+                        st.info("🍪 Your session has been saved. You'll stay logged in even after refreshing the page!")
                         st.balloons()
 
                         # Log action
@@ -175,9 +183,9 @@ else:
                 st.markdown(f"{status} One digit")
         
         col1, col2 = st.columns(2)
-        
+
         with col1:
-            if st.button("📝 Register", use_container_width=True):
+            if st.button("📝 Register", use_container_width=True, key="register_btn"):
                 # Validation
                 if not full_name:
                     st.error("❌ Please enter your full name")
@@ -195,17 +203,17 @@ else:
                         full_name=full_name,
                         role="user"
                     )
-                    
+
                     if success:
                         st.success(f"✅ {message}")
                         st.info("You can now login with your credentials")
                         st.balloons()
                     else:
                         st.error(f"❌ {message}")
-        
+
         with col2:
-            if st.button("🔄 Clear", use_container_width=True):
+            if st.button("🔄 Clear", use_container_width=True, key="register_clear_btn"):
                 st.rerun()
-        
+
         st.markdown('</div>', unsafe_allow_html=True)
 

@@ -31,7 +31,7 @@ AuthManager.init_session_state()
 
 # Check if user is authenticated
 if not st.session_state.get("authenticated"):
-    st.error("❌ Please login first to access the dashboard")
+    st.error("Please login first to access the dashboard")
     if st.button("Go to Login"):
         st.switch_page("pages/auth.py")
     st.stop()
@@ -374,7 +374,7 @@ def create_course_heading_plot(track_data, vessel_name):
     return fig
 
 def create_position_plot(track_data, vessel_name):
-    """Create latitude/longitude time series plot"""
+    """Create latitude/longitude time series line plot"""
     if not track_data or len(track_data) == 0:
         return None
 
@@ -425,9 +425,76 @@ def create_position_plot(track_data, vessel_name):
 
     return fig
 
+def create_latlon_bar_plot(track_data, vessel_name):
+    """Create latitude/longitude historical bar plot with different colors"""
+    if not track_data or len(track_data) == 0:
+        return None
+
+    timestamps = []
+    lats = []
+    lons = []
+
+    for point in track_data:
+        try:
+            timestamps.append(point.get('BaseDateTime'))
+            lats.append(float(point.get('LAT', 0)))
+            lons.append(float(point.get('LON', 0)))
+        except:
+            continue
+
+    if not timestamps:
+        return None
+
+    # Create figure with secondary y-axis
+    fig = go.Figure()
+
+    # Add latitude bars
+    fig.add_trace(go.Bar(
+        x=timestamps, y=lats,
+        name='Latitude',
+        marker=dict(color='#00D9FF'),
+        opacity=0.7,
+        yaxis='y1'
+    ))
+
+    # Add longitude bars
+    fig.add_trace(go.Bar(
+        x=timestamps, y=lons,
+        name='Longitude',
+        marker=dict(color='#FF4444'),
+        opacity=0.7,
+        yaxis='y2'
+    ))
+
+    fig.update_layout(
+        title=f'{vessel_name} - Latitude & Longitude Historical Bar Plot',
+        xaxis_title='Time',
+        yaxis=dict(
+            title='Latitude (°)',
+            title_font=dict(color='#00D9FF'),
+            tickfont=dict(color='#00D9FF')
+        ),
+        yaxis2=dict(
+            title='Longitude (°)',
+            title_font=dict(color='#FF4444'),
+            tickfont=dict(color='#FF4444'),
+            overlaying='y',
+            side='right'
+        ),
+        hovermode='x unified',
+        template='plotly_dark',
+        plot_bgcolor='rgba(0, 31, 63, 0.5)',
+        paper_bgcolor='rgba(44, 62, 80, 0.8)',
+        font=dict(color='#00D9FF', family='Courier New'),
+        height=400,
+        barmode='group'
+    )
+
+    return fig
+
 # Input section for vessel query
 st.subheader("Query Vessel Position & Track")
-vessel_query = st.text_input("Please enter your query:", value="Example: Show last position of US GOV VESSEL")
+vessel_query = st.text_input("Please enter your query:", value="Show last position of US GOV VESSEL")
 
 if st.button("🔍 Get Vessel Position & Track"):
     try:
@@ -541,16 +608,16 @@ if 'current_track' in st.session_state and st.session_state['current_track']:
             try:
                 fig_sog = create_time_series_dashboard(track_data, vessel_name)
                 if fig_sog:
-                    st.plotly_chart(fig_sog, use_container_width=True)
+                    st.plotly_chart(fig_sog, use_container_width=True, key="sog_chart")
             except Exception as e:
                 st.error(f"Error creating SOG plot: {e}")
 
         with ts_col2:
-            st.markdown("**Position Over Time**")
+            st.markdown("**Position Over Time (Line Plot)**")
             try:
                 fig_pos = create_position_plot(track_data, vessel_name)
                 if fig_pos:
-                    st.plotly_chart(fig_pos, use_container_width=True)
+                    st.plotly_chart(fig_pos, use_container_width=True, key="position_line_chart")
             except Exception as e:
                 st.error(f"Error creating position plot: {e}")
 
@@ -563,18 +630,18 @@ if 'current_track' in st.session_state and st.session_state['current_track']:
             try:
                 fig_course = create_course_heading_plot(track_data, vessel_name)
                 if fig_course:
-                    st.plotly_chart(fig_course, use_container_width=True)
+                    st.plotly_chart(fig_course, use_container_width=True, key="course_heading_chart")
             except Exception as e:
                 st.error(f"Error creating course plot: {e}")
 
         with ts_col4:
-            st.markdown("**Latitude & Longitude**")
+            st.markdown("**Latitude & Longitude (Bar Plot)**")
             try:
-                fig_latlon = create_position_plot(track_data, vessel_name)
+                fig_latlon = create_latlon_bar_plot(track_data, vessel_name)
                 if fig_latlon:
-                    st.plotly_chart(fig_latlon, use_container_width=True)
+                    st.plotly_chart(fig_latlon, use_container_width=True, key="latlon_bar_chart")
             except Exception as e:
-                st.error(f"Error creating lat/lon plot: {e}")
+                st.error(f"Error creating lat/lon bar plot: {e}")
 
     with tab_stats:
         st.subheader("Track Statistics & Analysis")
