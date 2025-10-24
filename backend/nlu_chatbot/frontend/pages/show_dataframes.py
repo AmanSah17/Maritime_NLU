@@ -29,6 +29,10 @@ except Exception:
 # Initialize authentication
 AuthManager.init_session_state()
 
+# Try to restore from cookies first (on page load/refresh)
+if not st.session_state.get("authenticated"):
+    AuthManager.restore_from_cookies()
+
 # Check if user is authenticated
 if not st.session_state.get("authenticated"):
     st.error("Please login first to access the dashboard")
@@ -569,22 +573,24 @@ if 'current_track' in st.session_state and st.session_state['current_track']:
     SessionManager.save_track_data(track_data)
 
     # Visualization tabs
-    tab_map, tab_timeseries, tab_stats, tab_data = st.tabs([
-        "🗺️ Interactive Map",
+    tab_map_stats, tab_timeseries, tab_data = st.tabs([
+        "🗺️ Map & Statistics",
         "📈 Time Series",
-        "📊 Statistics",
-        "� Raw Data"
+        "📥 Raw Data"
     ])
 
-    with tab_map:
-        st.subheader("Interactive Folium Map with Movement Arrows")
+    with tab_map_stats:
+        st.subheader("Interactive Map & Track Statistics")
+
+        # Map section
+        st.markdown("**Interactive Folium Map with Movement Arrows**")
         col_map1, col_map2 = st.columns([3, 1])
 
         with col_map1:
             try:
                 m = create_track_map(track_data, vessel_name)
                 if m:
-                    st_folium(m, width=1200, height=600)
+                    st_folium(m, width=1200, height=500)
                 else:
                     st.error("Could not create map from track data")
             except Exception as e:
@@ -597,54 +603,9 @@ if 'current_track' in st.session_state and st.session_state['current_track']:
             st.markdown("🔴 **Red** - Oldest")
             st.markdown("➡️ **Arrows** - Movement Pattern")
 
-    with tab_timeseries:
-        st.subheader("Time Series Analysis")
-
-        # Create tabs for different metrics
-        ts_col1, ts_col2 = st.columns(2)
-
-        with ts_col1:
-            st.markdown("**Speed Over Ground (SOG)**")
-            try:
-                fig_sog = create_time_series_dashboard(track_data, vessel_name)
-                if fig_sog:
-                    st.plotly_chart(fig_sog, use_container_width=True, key="sog_chart")
-            except Exception as e:
-                st.error(f"Error creating SOG plot: {e}")
-
-        with ts_col2:
-            st.markdown("**Position Over Time (Line Plot)**")
-            try:
-                fig_pos = create_position_plot(track_data, vessel_name)
-                if fig_pos:
-                    st.plotly_chart(fig_pos, use_container_width=True, key="position_line_chart")
-            except Exception as e:
-                st.error(f"Error creating position plot: {e}")
-
+        # Statistics section
         st.markdown("---")
-
-        ts_col3, ts_col4 = st.columns(2)
-
-        with ts_col3:
-            st.markdown("**Course & Heading**")
-            try:
-                fig_course = create_course_heading_plot(track_data, vessel_name)
-                if fig_course:
-                    st.plotly_chart(fig_course, use_container_width=True, key="course_heading_chart")
-            except Exception as e:
-                st.error(f"Error creating course plot: {e}")
-
-        with ts_col4:
-            st.markdown("**Latitude & Longitude (Bar Plot)**")
-            try:
-                fig_latlon = create_latlon_bar_plot(track_data, vessel_name)
-                if fig_latlon:
-                    st.plotly_chart(fig_latlon, use_container_width=True, key="latlon_bar_chart")
-            except Exception as e:
-                st.error(f"Error creating lat/lon bar plot: {e}")
-
-    with tab_stats:
-        st.subheader("Track Statistics & Analysis")
+        st.markdown("**Track Statistics & Analysis**")
 
         # Calculate statistics
         stats_data = []
@@ -697,6 +658,52 @@ if 'current_track' in st.session_state and st.session_state['current_track']:
             with col_stat7:
                 lon_range = stats_df['lon'].max() - stats_df['lon'].min()
                 st.metric("📏 Lon Range", f"{lon_range:.4f}°")
+
+    with tab_timeseries:
+        st.subheader("Time Series Analysis")
+
+        # Create tabs for different metrics
+        ts_col1, ts_col2 = st.columns(2)
+
+        with ts_col1:
+            st.markdown("**Speed Over Ground (SOG)**")
+            try:
+                fig_sog = create_time_series_dashboard(track_data, vessel_name)
+                if fig_sog:
+                    st.plotly_chart(fig_sog, use_container_width=True, key="sog_chart")
+            except Exception as e:
+                st.error(f"Error creating SOG plot: {e}")
+
+        with ts_col2:
+            st.markdown("**Position Over Time (Line Plot)**")
+            try:
+                fig_pos = create_position_plot(track_data, vessel_name)
+                if fig_pos:
+                    st.plotly_chart(fig_pos, use_container_width=True, key="position_line_chart")
+            except Exception as e:
+                st.error(f"Error creating position plot: {e}")
+
+        st.markdown("---")
+
+        ts_col3, ts_col4 = st.columns(2)
+
+        with ts_col3:
+            st.markdown("**Course & Heading**")
+            try:
+                fig_course = create_course_heading_plot(track_data, vessel_name)
+                if fig_course:
+                    st.plotly_chart(fig_course, use_container_width=True, key="course_heading_chart")
+            except Exception as e:
+                st.error(f"Error creating course plot: {e}")
+
+        with ts_col4:
+            st.markdown("**Latitude & Longitude (Bar Plot)**")
+            try:
+                fig_latlon = create_latlon_bar_plot(track_data, vessel_name)
+                if fig_latlon:
+                    st.plotly_chart(fig_latlon, use_container_width=True, key="latlon_bar_chart")
+            except Exception as e:
+                st.error(f"Error creating lat/lon bar plot: {e}")
 
     with tab_data:
         st.subheader("Raw Track Data")

@@ -70,6 +70,10 @@ h1, h2, h3 {
 # Initialize session
 AuthManager.init_session_state()
 
+# Try to restore from cookies first (on page load/refresh)
+if not st.session_state.get("authenticated"):
+    AuthManager.restore_from_cookies()
+
 # Check authentication
 if not st.session_state.get("authenticated"):
     st.error("❌ Please login first")
@@ -86,7 +90,80 @@ if user_data.get("role") != "admin":
 st.markdown('<div class="admin-header"><h1>⚙️ ADMIN PANEL - USER MANAGEMENT</h1></div>', unsafe_allow_html=True)
 
 # Admin tabs
-tab_users, tab_stats, tab_settings = st.tabs(["👥 Users", "📊 Statistics", "⚙️ Settings"])
+tab_profile, tab_users, tab_stats, tab_settings = st.tabs(["👤 User Profile", "👥 Users", "📊 Statistics", "⚙️ Settings"])
+
+with tab_profile:
+    st.subheader("👤 User Profile")
+
+    # Get current user data
+    current_user = user_data
+
+    col1, col2 = st.columns([1, 2])
+
+    with col1:
+        st.markdown("**Profile Information**")
+        st.markdown(f"""
+        - **Name:** {current_user.get('full_name', 'N/A')}
+        - **Email:** {current_user.get('email', 'N/A')}
+        - **Role:** `{current_user.get('role', 'N/A').upper()}`
+        - **Status:** {'🟢 Active' if current_user.get('is_active') else '🔴 Inactive'}
+        """)
+
+    with col2:
+        st.markdown("**Account Statistics**")
+        col_a, col_b, col_c = st.columns(3)
+
+        with col_a:
+            st.metric("Total Logins", current_user.get('login_count', 0))
+
+        with col_b:
+            st.metric("Account Created", current_user.get('created_at', 'N/A')[:10])
+
+        with col_c:
+            last_login = current_user.get('last_login', 'Never')
+            if last_login != 'Never':
+                last_login = last_login[:10]
+            st.metric("Last Login", last_login)
+
+    st.markdown("---")
+
+    st.markdown("**Session Information**")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.info(f"""
+        **Current Session:**
+        - Username: `{st.session_state.get('username', 'N/A')}`
+        - Authenticated: {'✅ Yes' if st.session_state.get('authenticated') else '❌ No'}
+        - Token: {'✅ Valid' if st.session_state.get('auth_token') else '❌ Invalid'}
+        """)
+
+    with col2:
+        st.info(f"""
+        **Security:**
+        - Password: Protected (SHA-256)
+        - Token Expiry: 24 hours
+        - Cookie Duration: 7 days
+        - Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        """)
+
+    st.markdown("---")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("🔄 Refresh Profile"):
+            st.rerun()
+
+    with col2:
+        if st.button("🔐 Change Password"):
+            st.info("Password change feature coming soon")
+
+    with col3:
+        if st.button("🔓 Logout"):
+            AuthManager.logout()
+            st.success("✅ Logged out")
+            st.rerun()
 
 with tab_users:
     st.subheader("User Management")
@@ -292,10 +369,7 @@ with tab_settings:
                 user_db.create_default_admin()
                 st.success("✅ Admin password reset")
 
-# Logout button
+# Footer
 st.markdown("---")
-if st.button("🔓 Logout"):
-    AuthManager.logout()
-    st.success("✅ Logged out")
-    st.rerun()
+st.caption("🔐 Maritime Defense Dashboard - Admin Panel | Logout from User Profile tab")
 

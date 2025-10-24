@@ -12,6 +12,33 @@ except Exception:
 
 st.title("⚓ Maritime Vessel Monitoring Chatbot")
 
+# Custom CSS for defense theme
+st.markdown("""
+<style>
+:root {
+    --primary-navy: #001F3F;
+    --secondary-gray: #2C3E50;
+    --accent-cyan: #00D9FF;
+}
+
+body {
+    background: linear-gradient(135deg, #001F3F 0%, #2C3E50 100%);
+    color: #E8E8E8;
+    font-family: 'Courier New', monospace;
+}
+
+.stApp {
+    background: linear-gradient(135deg, #001F3F 0%, #2C3E50 100%);
+}
+
+h1, h2, h3 {
+    color: #00D9FF;
+    text-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
+    letter-spacing: 2px;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # session state initialization
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
@@ -81,11 +108,15 @@ with st.sidebar:
     if prefix and len(prefix.strip()) >= 2:
         candidates = fetch_vessel_prefix(prefix.strip(), limit=20)
         if candidates:
-            sel = st.selectbox("Matching vessels", options=candidates)
-            if sel and st.button("Query selected vessel"):
-                qtext = f"show last position of {sel}"
+            sel = st.selectbox("Matching vessels", options=candidates, key="vessel_select")
+
+            # Auto-fetch on selection (async-like behavior)
+            if sel and sel != st.session_state.get('last_selected_vessel'):
                 st.session_state['last_selected_vessel'] = sel
-                send_query(qtext)
+                with st.spinner(f"🔍 Fetching data for {sel}..."):
+                    qtext = f"show last position of {sel}"
+                    send_query(qtext)
+                st.rerun()
         else:
             st.info("No matches found for that prefix")
     else:
@@ -202,21 +233,53 @@ with map_col:
         st.info("No map selected. Use 'Plot' buttons in the conversation or the last-response controls to show a map.")
 
 with st.container():
-    st.markdown("### Conversation")
-    # make the conversation area scrollable by using an expander
-    with st.expander("Conversation (click to open)", expanded=True):
+    st.markdown("### 💬 Conversation History")
+
+    # Add CSS for scrollable chat container
+    st.markdown("""
+    <style>
+    .chat-container {
+        height: 500px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 15px;
+        background-color: #f9f9f9;
+        margin-bottom: 15px;
+    }
+    .user-message {
+        background-color: #e3f2fd;
+        border-left: 4px solid #2196F3;
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 4px;
+    }
+    .bot-message {
+        background-color: #f5f5f5;
+        border-left: 4px solid #4CAF50;
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 4px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Display chat history in a scrollable container
+    if st.session_state.chat_history:
+        chat_html = '<div class="chat-container">'
+
         for idx, (sender, msg) in enumerate(st.session_state.chat_history):
             if sender == "User":
-                st.markdown(f"**You:** {msg}")
+                chat_html += f'<div class="user-message"><b>👤 You:</b> {msg}</div>'
             else:
-                # Render concise Bot messages. Do not dump raw dicts into chat history
+                # Render concise Bot messages
                 if isinstance(msg, dict):
                     if msg.get('message'):
-                        st.markdown(f"**Bot:** {msg.get('message')}")
+                        chat_html += f'<div class="bot-message"><b>🤖 Bot:</b> {msg.get("message")}</div>'
                     else:
                         # Show formatted response if available
                         if msg.get('_formatted_text'):
-                            st.markdown(f"**Bot:** {msg.get('_formatted_text')}")
+                            chat_html += f'<div class="bot-message"><b>🤖 Bot:</b> {msg.get("_formatted_text")}</div>'
                         else:
                             # Fallback to manual formatting
                             vessel = msg.get('VesselName', 'unknown')
@@ -228,21 +291,50 @@ with st.container():
                                 summary += f", Position: {lat}, {lon}"
                             if ts:
                                 summary += f", Time: {ts}"
-                            st.markdown(f"**Bot:** {summary}")
+                            chat_html += f'<div class="bot-message"><b>🤖 Bot:</b> {summary}</div>'
 
                         # store track payload under message index so we can plot later
                         if 'track' in msg and isinstance(msg['track'], list) and len(msg['track'])>0:
                             st.session_state.track_store[str(idx)] = msg['track']
-                            if st.button(f"Plot track (last 10 min) — message {idx}", key=f"plot_{idx}"):
-                                st.session_state.map_to_plot = {
-                                    "type": "track",
-                                    "vessel": msg.get('VesselName', 'unknown'),
-                                    "points": msg['track']
-                                }
-                        else:
-                            # No track available; show small helper text
-                            st.info("No track data available for this response")
                 else:
                     # simple text response
-                    st.markdown(f"**Bot:** {msg}")
+                    chat_html += f'<div class="bot-message"><b>🤖 Bot:</b> {msg}</div>'
+
+        chat_html += '</div>'
+        st.markdown(chat_html, unsafe_allow_html=True)
+
+        # Plot buttons for tracks
+        st.markdown("---")
+        st.markdown("**Plot Options:**")
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            if st.button("📍 Plot Last Response"):
+                if st.session_state.last_bot_response and isinstance(st.session_state.last_bot_response, dict):
+                    resp = st.session_state.last_bot_response
+                    if 'track' in resp and isinstance(resp['track'], list) and len(resp['track'])>0:
+                        st.session_state.map_to_plot = {
+                            "type": "track",
+                            "vessel": resp.get('VesselName', 'unknown'),
+                            "points": resp['track']
+                        }
+                        st.rerun()
+
+        with col2:
+            if st.button("🔄 Clear History"):
+                st.session_state.chat_history = []
+                st.session_state.last_bot_response = None
+                st.rerun()
+
+        with col3:
+            if st.button("📥 Export Chat"):
+                chat_text = "\n".join([f"{sender}: {msg}" for sender, msg in st.session_state.chat_history])
+                st.download_button(
+                    label="Download Chat",
+                    data=chat_text,
+                    file_name="chat_history.txt",
+                    mime="text/plain"
+                )
+    else:
+        st.info("💬 No conversation yet. Start by searching for a vessel or asking a question!")
 
