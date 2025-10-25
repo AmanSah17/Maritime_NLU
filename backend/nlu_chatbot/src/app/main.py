@@ -63,6 +63,20 @@ logging.info(f"✅ Loaded {len(vessel_list)} vessels from {db_path}")
 nlp_engine = MaritimeNLPInterpreter(vessel_list=vessel_list)
 executor = IntentExecutor(db)
 
+# Initialize XGBoost predictor with model path from environment or auto-detection
+xgboost_model_path = os.environ.get("XGBOOST_MODEL_PATH")
+if xgboost_model_path:
+    logging.info(f"Using XGBoost model path from environment: {xgboost_model_path}")
+    predictor = get_predictor(xgboost_model_path)
+else:
+    logging.info("XGBoost model path not set. Auto-detecting model location...")
+    predictor = get_predictor()
+
+if predictor.is_loaded:
+    logging.info("✅ XGBoost model loaded successfully - REAL predictions enabled")
+else:
+    logging.warning("⚠️  XGBoost model not loaded - DEMO predictions will be used")
+
 app = FastAPI(title="Maritime Vessel Monitoring API")
 
 # allow origins for development frontends (adjust in production)
