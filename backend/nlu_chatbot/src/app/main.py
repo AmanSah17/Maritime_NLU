@@ -21,6 +21,7 @@ from db_handler import MaritimeDB
 from nlp_interpreter import MaritimeNLPInterpreter
 from intent_executor import IntentExecutor
 from response_formatter import ResponseFormatter
+from xgboost_predictor import get_predictor
 import time
 import logging
 
@@ -323,3 +324,116 @@ def job_status(job_id: str):
     if job_id not in jobs:
         return {"error": "unknown job id"}
     return jobs[job_id]
+
+
+# ============================================================================
+# XGBoost Prediction Endpoints - Uses parsed query data for predictions
+# ============================================================================
+
+class PredictionRequest(BaseModel):
+    """Request for vessel trajectory prediction"""
+    vessel: str | None = None
+    mmsi: int | None = None
+    sequence_length: int = 12
+    end_dt: str | None = None
+
+
+@app.post("/predict/trajectory")
+def predict_trajectory(request: PredictionRequest):
+    """
+    Predict next vessel position using XGBoost model
+    Uses parsed query data to fetch vessel history and make predictions
+
+    Args:
+        vessel: Vessel name
+        mmsi: MMSI number
+        sequence_length: Number of historical points to use (default 12)
+        end_dt: End datetime for fetching data
+
+    Returns:
+        Prediction results with current and predicted positions
+    """
+    try:
+        predictor = get_predictor()
+
+        if not predictor.is_loaded:
+            return {
+                "error": "XGBoost model not available",
+                "prediction_available": False,
+                "message": "Model files not found in results/xgboost_advanced_50_vessels/"
+            }
+
+        # Fetch vessel data from database
+        target_dt = request.end_dt or "2099-12-31 23:59:59"
+
+        if request.vessel:
+            logging.info(f"Fetching trajectory data for vessel: {request.vessel}")
+            track_df = db.fetch_track_ending_at(
+                vessel_name=request.vessel,
+                end_dt=target_dt,
+                limit=request.sequence_length + 10  # Get extra data for preprocessing
+            )
+        elif request.mmsi:
+            logging.info(f"Fetching trajectory data for MMSI: {request.mmsi}")
+            track_df = db.fetch_track_ending_at(
+                mmsi=int(request.mmsi),
+                end_dt=target_dt,
+                limit=request.sequence_length + 10
+            )
+        else:
+            return {"error": "Provide vessel name or MMSI"}
+
+        if track_df.empty:
+            return {
+                "error": "No vessel data found",
+                "prediction_available": False
+            }
+
+        # Make prediction
+        prediction_result = predictor.predict_single_vessel(
+            track_df,
+            sequence_length=request.sequence_length
+        )
+
+        # Add map data for visualization
+        if prediction_result.get("prediction_available"):
+            prediction_result["map_data"] = {
+                "current_position": {
+                    "lat": prediction_result["last_known_lat"],
+                    "lon": prediction_result["last_known_lon"],
+                    "type": "current"
+                },
+                "predicted_position": {
+                    "lat": prediction_result["predicted_lat"],
+                    "lon": prediction_result["predicted_lon"],
+                    "type": "predicted"
+                },
+                "track": track_df[["LAT", "LON", "BaseDateTime"]].tail(20).to_dict(orient="records")
+            }
+
+        return prediction_result
+
+    except Exception as e:
+        logging.error(f"Prediction error: {e}")
+        return {
+            "error": str(e),
+            "prediction_available": False
+        }
+
+
+@app.get("/predict/vessel/{vessel_name}")
+def predict_vessel_by_name(vessel_name: str, sequence_length: int = 12):
+    """Quick prediction endpoint for a vessel by name"""
+    return predict_trajectory(PredictionRequest(
+        vessel=vessel_name,
+        sequence_length=sequence_length
+    ))
+
+
+@app.get("/predict/mmsi/{mmsi}")
+def predict_vessel_by_mmsi(mmsi: int, sequence_length: int = 12):
+    """Quick prediction endpoint for a vessel by MMSI"""
+    return predict_trajectory(PredictionRequest(
+        mmsi=mmsi,
+        sequence_length=sequence_length
+    ))
