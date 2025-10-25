@@ -1,0 +1,35 @@
+{
+  "total_tests": 100,
+  "successful": 92,
+  "failed": 8,
+  "real_mode": 92,
+  "demo_mode": 0,
+  "success_rate": 92.0,
+  "real_mode_rate": 100.0,
+  "by_sequence_length": {
+    "6": {
+      "total": 25,
+      "real": 23,
+      "demo": 0,
+      "failed": 2
+    },
+    "12": {
+      "total": 25,
+      "real": 23,
+      "demo": 0,
+      "failed": 2
+    },
+    "18": {
+      "total": 25,
+      "real": 23,
+      "demo": 0,
+      "failed": 2
+    },
+    "24": {
+      "total": 25,
+      "real": 23,
+      "demo": 0,
+      "failed": 2
+    }
+  }
+}

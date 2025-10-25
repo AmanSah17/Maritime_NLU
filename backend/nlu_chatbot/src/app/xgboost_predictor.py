@@ -139,36 +139,40 @@ class XGBoostPredictor:
 
             # Statistical features (10 per dimension)
             features_dict = {
-                'mean': np.mean(X_dim, axis=1),
-                'std': np.std(X_dim, axis=1),
-                'min': np.min(X_dim, axis=1),
-                'max': np.max(X_dim, axis=1),
-                'median': np.median(X_dim, axis=1),
-                'p25': np.percentile(X_dim, 25, axis=1),
-                'p75': np.percentile(X_dim, 75, axis=1),
-                'range': np.max(X_dim, axis=1) - np.min(X_dim, axis=1),
+                'mean': np.nanmean(X_dim, axis=1),
+                'std': np.nanstd(X_dim, axis=1),
+                'min': np.nanmin(X_dim, axis=1),
+                'max': np.nanmax(X_dim, axis=1),
+                'median': np.nanmedian(X_dim, axis=1),
+                'p25': np.nanpercentile(X_dim, 25, axis=1),
+                'p75': np.nanpercentile(X_dim, 75, axis=1),
+                'range': np.nanmax(X_dim, axis=1) - np.nanmin(X_dim, axis=1),
                 'skew': np.array([pd.Series(row).skew() for row in X_dim]),
                 'kurtosis': np.array([pd.Series(row).kurtosis() for row in X_dim]),
             }
 
             # Trend features (7 per dimension)
             diff = np.diff(X_dim, axis=1)
-            features_dict['trend_mean'] = np.mean(diff, axis=1)
-            features_dict['trend_std'] = np.std(diff, axis=1)
-            features_dict['trend_max'] = np.max(diff, axis=1)
-            features_dict['trend_min'] = np.min(diff, axis=1)
+            features_dict['trend_mean'] = np.nanmean(diff, axis=1)
+            features_dict['trend_std'] = np.nanstd(diff, axis=1)
+            features_dict['trend_max'] = np.nanmax(diff, axis=1)
+            features_dict['trend_min'] = np.nanmin(diff, axis=1)
 
             # Autocorrelation-like features (2 per dimension)
             features_dict['first_last_diff'] = X_dim[:, -1] - X_dim[:, 0]
             features_dict['first_last_ratio'] = np.divide(X_dim[:, -1], X_dim[:, 0] + 1e-6)
 
             # Volatility (1 per dimension)
-            features_dict['volatility'] = np.std(diff, axis=1)
+            features_dict['volatility'] = np.nanstd(diff, axis=1)
 
             dim_features = np.column_stack(list(features_dict.values()))
+            # Replace NaN with 0
+            dim_features = np.nan_to_num(dim_features, nan=0.0, posinf=0.0, neginf=0.0)
             features_list.append(dim_features)
 
         X_features = np.hstack(features_list)
+        # Final NaN check
+        X_features = np.nan_to_num(X_features, nan=0.0, posinf=0.0, neginf=0.0)
         logger.info(f"✅ Extracted {X_features.shape[1]} features from {n_samples} samples")
         return X_features
 
@@ -186,14 +190,18 @@ class XGBoostPredictor:
         lons = X[:, :, 1]
 
         for i in range(n_samples):
-            lat_seq = lats[i]
-            lon_seq = lons[i]
+            lat_seq = lats[i].astype(float)
+            lon_seq = lons[i].astype(float)
+
+            # Replace NaN with 0
+            lat_seq = np.nan_to_num(lat_seq, nan=0.0)
+            lon_seq = np.nan_to_num(lon_seq, nan=0.0)
 
             # Distance to first point
             dist_to_first = self._haversine_distance(lat_seq[0], lon_seq[0], lat_seq, lon_seq)
-            haversine_features[i, 0] = np.mean(dist_to_first)
-            haversine_features[i, 1] = np.max(dist_to_first)
-            haversine_features[i, 2] = np.std(dist_to_first)
+            haversine_features[i, 0] = np.nanmean(dist_to_first)
+            haversine_features[i, 1] = np.nanmax(dist_to_first)
+            haversine_features[i, 2] = np.nanstd(dist_to_first)
 
             # Consecutive distances
             consecutive_dists = [0.0]
@@ -202,11 +210,13 @@ class XGBoostPredictor:
                 consecutive_dists.append(dist)
 
             consecutive_dists = np.array(consecutive_dists)
-            haversine_features[i, 3] = np.sum(consecutive_dists)
-            haversine_features[i, 4] = np.mean(consecutive_dists[1:]) if len(consecutive_dists) > 1 else 0
-            haversine_features[i, 5] = np.max(consecutive_dists)
-            haversine_features[i, 6] = np.std(consecutive_dists)
+            haversine_features[i, 3] = np.nansum(consecutive_dists)
+            haversine_features[i, 4] = np.nanmean(consecutive_dists[1:]) if len(consecutive_dists) > 1 else 0
+            haversine_features[i, 5] = np.nanmax(consecutive_dists)
+            haversine_features[i, 6] = np.nanstd(consecutive_dists)
 
+        # Final NaN check
+        haversine_features = np.nan_to_num(haversine_features, nan=0.0, posinf=0.0, neginf=0.0)
         logger.info(f"✅ Added {haversine_features.shape[1]} Haversine features")
         return haversine_features
     
@@ -278,6 +288,130 @@ class XGBoostPredictor:
 
         return np.array([pred_lat, pred_lon, pred_sog, pred_cog])
 
+    def _adapt_6_to_28_dimensions(self, X_6d: np.ndarray) -> np.ndarray:
+        """
+        Adapt 6 available dimensions to 28 expected dimensions
+
+        Input: (n_samples, n_timesteps, 6) - LAT, LON, SOG, COG, Heading, VesselType
+        Output: (n_samples, n_timesteps, 28) - expanded with derived features
+
+        Strategy: Create derived features from the 6 base dimensions
+        - Normalize each dimension
+        - Create speed components (u, v from SOG and COG)
+        - Create acceleration features
+        - Create spatial derivatives
+        """
+        n_samples, n_timesteps, n_features = X_6d.shape
+
+        if n_features != 6:
+            logger.error(f"Expected 6 dimensions, got {n_features}")
+            raise ValueError(f"Expected 6 dimensions, got {n_features}")
+
+        # Initialize 28-dimensional output
+        X_28d = np.zeros((n_samples, n_timesteps, 28))
+
+        for sample_idx in range(n_samples):
+            seq = X_6d[sample_idx]  # (n_timesteps, 6)
+
+            # Extract base dimensions and convert to float
+            lat = seq[:, 0].astype(float)  # Latitude
+            lon = seq[:, 1].astype(float)  # Longitude
+            sog = seq[:, 2].astype(float)  # Speed Over Ground
+            cog = seq[:, 3].astype(float)  # Course Over Ground
+            heading = seq[:, 4].astype(float)  # Heading
+            vessel_type = seq[:, 5].astype(float)  # Vessel Type
+
+            # Replace NaN values with 0
+            lat = np.nan_to_num(lat, nan=0.0)
+            lon = np.nan_to_num(lon, nan=0.0)
+            sog = np.nan_to_num(sog, nan=0.0)
+            cog = np.nan_to_num(cog, nan=0.0)
+            heading = np.nan_to_num(heading, nan=0.0)
+            vessel_type = np.nan_to_num(vessel_type, nan=0.0)
+
+            # Dimensions 0-2: Normalized LAT components
+            lat_mean = np.mean(lat)
+            lat_std = np.std(lat) + 1e-6
+            lat_norm = (lat - lat_mean) / lat_std
+            lat_norm = np.nan_to_num(lat_norm, nan=0.0)
+            lat_norm_scaled = lat_norm / (np.max(np.abs(lat_norm)) + 1e-6)
+            X_28d[sample_idx, :, 0] = lat_norm
+            X_28d[sample_idx, :, 1] = lat_norm_scaled
+            X_28d[sample_idx, :, 2] = lat  # Raw LAT
+
+            # Dimensions 3-8: Normalized LON and derivatives
+            lon_mean = np.mean(lon)
+            lon_std = np.std(lon) + 1e-6
+            lon_norm = (lon - lon_mean) / lon_std
+            lon_norm = np.nan_to_num(lon_norm, nan=0.0)
+            lon_norm_scaled = lon_norm / (np.max(np.abs(lon_norm)) + 1e-6)
+            lon_diff = np.diff(lon, prepend=lon[0])
+            X_28d[sample_idx, :, 3] = lon_norm
+            X_28d[sample_idx, :, 4] = lon_norm_scaled
+            X_28d[sample_idx, :, 5] = np.nan_to_num(np.sin(np.radians(lon_diff)), nan=0.0)
+            X_28d[sample_idx, :, 6] = np.nan_to_num(np.cos(np.radians(lon_diff)), nan=0.0)
+            X_28d[sample_idx, :, 7] = lon_diff
+            X_28d[sample_idx, :, 8] = lon  # Raw LON
+
+            # Dimensions 9-14: SOG and speed components
+            sog_mean = np.mean(sog)
+            sog_std = np.std(sog) + 1e-6
+            sog_norm = (sog - sog_mean) / sog_std
+            sog_norm = np.nan_to_num(sog_norm, nan=0.0)
+            u_component = sog * np.cos(np.radians(cog))
+            v_component = sog * np.sin(np.radians(cog))
+            u_component = np.nan_to_num(u_component, nan=0.0)
+            v_component = np.nan_to_num(v_component, nan=0.0)
+            X_28d[sample_idx, :, 9] = sog_norm
+            X_28d[sample_idx, :, 10] = sog
+            X_28d[sample_idx, :, 11] = u_component
+            X_28d[sample_idx, :, 12] = v_component
+            X_28d[sample_idx, :, 13] = np.sqrt(u_component**2 + v_component**2)
+            X_28d[sample_idx, :, 14] = cog
+
+            # Dimensions 15-18: COG and heading derivatives
+            cog_mean = np.mean(cog)
+            cog_std = np.std(cog) + 1e-6
+            cog_norm = (cog - cog_mean) / cog_std
+            cog_norm = np.nan_to_num(cog_norm, nan=0.0)
+            cog_diff = np.diff(cog, prepend=cog[0])
+            X_28d[sample_idx, :, 15] = cog_norm
+            X_28d[sample_idx, :, 16] = np.nan_to_num(np.sin(np.radians(cog_diff)), nan=0.0)
+            X_28d[sample_idx, :, 17] = np.nan_to_num(np.cos(np.radians(cog_diff)), nan=0.0)
+            X_28d[sample_idx, :, 18] = cog_diff
+
+            # Dimensions 19-22: Heading and acceleration
+            heading_mean = np.mean(heading)
+            heading_std = np.std(heading) + 1e-6
+            heading_norm = (heading - heading_mean) / heading_std
+            heading_norm = np.nan_to_num(heading_norm, nan=0.0)
+            sog_diff = np.diff(sog, prepend=sog[0])
+            sog_accel = np.diff(sog_diff, prepend=sog_diff[0])
+            X_28d[sample_idx, :, 19] = heading_norm
+            X_28d[sample_idx, :, 20] = heading
+            X_28d[sample_idx, :, 21] = sog_diff
+            X_28d[sample_idx, :, 22] = sog_accel
+
+            # Dimensions 23-27: Vessel type and spatial features
+            vessel_type_mean = np.mean(vessel_type)
+            vessel_type_std = np.std(vessel_type) + 1e-6
+            vessel_type_norm = (vessel_type - vessel_type_mean) / vessel_type_std
+            vessel_type_norm = np.nan_to_num(vessel_type_norm, nan=0.0)
+            lat_diff = np.diff(lat, prepend=lat[0])
+            spatial_dist = np.sqrt(lat_diff**2 + lon_diff**2)
+            spatial_angle = np.arctan2(lat_diff, lon_diff)
+            X_28d[sample_idx, :, 23] = vessel_type_norm
+            X_28d[sample_idx, :, 24] = vessel_type
+            X_28d[sample_idx, :, 25] = lat_diff
+            X_28d[sample_idx, :, 26] = spatial_dist
+            X_28d[sample_idx, :, 27] = spatial_angle
+
+        # Final NaN check
+        X_28d = np.nan_to_num(X_28d, nan=0.0, posinf=0.0, neginf=0.0)
+
+        logger.info(f"✅ Adapted {n_samples} samples from 6 to 28 dimensions")
+        return X_28d
+
     def predict_single_vessel(self, vessel_df: pd.DataFrame,
                              sequence_length: int = 12) -> Dict:
         """Predict next position for a single vessel"""
@@ -321,40 +455,61 @@ class XGBoostPredictor:
                 logger.info(f"Available features: {feature_cols} (count: {len(feature_cols)})")
                 logger.info(f"Model expects: 28 dimensions (476 features + 7 haversine = 483 total)")
 
-                # Check if we have enough features
-                if len(feature_cols) < 28:
-                    logger.warning(f"⚠️  Feature mismatch: Database has {len(feature_cols)} features, model expects 28")
+                # Create 3D array: (1, sequence_length, n_features)
+                X_seq = last_seq[feature_cols].values.reshape(1, sequence_length, -1)
+                logger.info(f"Initial sequence shape: {X_seq.shape}")
+
+                # Adapt 6 dimensions to 28 dimensions
+                if X_seq.shape[2] == 6:
+                    logger.info("Adapting 6 dimensions to 28 dimensions...")
+                    X_seq = self._adapt_6_to_28_dimensions(X_seq)
+                    logger.info(f"Adapted sequence shape: {X_seq.shape}")
+                elif X_seq.shape[2] != 28:
+                    logger.warning(f"⚠️  Unexpected number of dimensions: {X_seq.shape[2]}")
                     logger.warning(f"⚠️  Falling back to DEMO mode")
-                    # Use demo prediction instead
                     pred = self._generate_demo_prediction(last_seq)
                     model_mode = "DEMO"
-                else:
-                    # Create 3D array: (1, sequence_length, n_features)
-                    X_seq = last_seq[feature_cols].values.reshape(1, sequence_length, -1)
-                    logger.info(f"Sequence shape: {X_seq.shape}")
+                    return {
+                        "prediction_available": True,
+                        "predicted_lat": float(pred[0]),
+                        "predicted_lon": float(pred[1]),
+                        "predicted_sog": float(pred[2]),
+                        "predicted_cog": float(pred[3]),
+                        "last_known_lat": float(last_seq.iloc[-1]['LAT']),
+                        "last_known_lon": float(last_seq.iloc[-1]['LON']),
+                        "last_known_sog": float(last_seq.iloc[-1]['SOG']),
+                        "last_known_cog": float(last_seq.iloc[-1]['COG']),
+                        "last_timestamp": str(last_seq.iloc[-1]['BaseDateTime']),
+                        "vessel_name": vessel_df.iloc[-1].get('VesselName', 'Unknown'),
+                        "mmsi": int(vessel_df.iloc[-1].get('MMSI', 0)) if 'MMSI' in vessel_df.columns else None,
+                        "model_mode": model_mode
+                    }
 
-                    # Extract advanced features
-                    X_features = self.extract_features_from_3d_array(X_seq)
+                # Extract advanced features
+                X_features = self.extract_features_from_3d_array(X_seq)
 
-                    # Add Haversine features
-                    X_haversine = self.add_haversine_features_3d(X_seq)
+                # Add Haversine features
+                X_haversine = self.add_haversine_features_3d(X_seq)
 
-                    # Combine features
-                    X_combined = np.hstack([X_features, X_haversine])
-                    logger.info(f"Combined feature shape: {X_combined.shape}")
+                # Combine features
+                X_combined = np.hstack([X_features, X_haversine])
+                logger.info(f"Combined feature shape: {X_combined.shape}")
 
-                    # Scale features
-                    X_scaled = self.scaler.transform(X_combined)
-                    logger.info(f"Scaled feature shape: {X_scaled.shape}")
+                # Scale features
+                X_scaled = self.scaler.transform(X_combined)
+                X_scaled = np.nan_to_num(X_scaled, nan=0.0, posinf=0.0, neginf=0.0)
+                logger.info(f"Scaled feature shape: {X_scaled.shape}")
 
-                    # Apply PCA
-                    X_pca = self.pca.transform(X_scaled)
-                    logger.info(f"PCA feature shape: {X_pca.shape}")
+                # Apply PCA
+                X_pca = self.pca.transform(X_scaled)
+                X_pca = np.nan_to_num(X_pca, nan=0.0, posinf=0.0, neginf=0.0)
+                logger.info(f"PCA feature shape: {X_pca.shape}")
 
-                    # Make prediction
-                    predictions = self.model.predict(X_pca)
-                    pred = predictions[0]
-                    model_mode = "REAL"
+                # Make prediction
+                predictions = self.model.predict(X_pca)
+                pred = predictions[0]
+                model_mode = "REAL"
+                logger.info(f"✅ REAL prediction successful: LAT={pred[0]:.4f}, LON={pred[1]:.4f}")
             else:
                 # Use demo prediction
                 logger.info("Using DEMO prediction mode (model not loaded)")
@@ -378,6 +533,8 @@ class XGBoostPredictor:
             }
         except Exception as e:
             logger.error(f"Prediction error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return {"error": str(e), "prediction_available": False}
 
 
