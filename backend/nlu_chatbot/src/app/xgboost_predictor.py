@@ -194,31 +194,60 @@ class XGBoostPredictor:
         
         return predictions
     
-    def predict_single_vessel(self, vessel_df: pd.DataFrame, 
+    def _generate_demo_prediction(self, vessel_df: pd.DataFrame) -> np.ndarray:
+        """Generate demo prediction based on current trajectory (for testing without model)"""
+        last_seq = vessel_df.tail(12)
+
+        # Simple extrapolation: use last known values with small random variation
+        last_lat = float(last_seq.iloc[-1]['LAT'])
+        last_lon = float(last_seq.iloc[-1]['LON'])
+        last_sog = float(last_seq.iloc[-1]['SOG'])
+        last_cog = float(last_seq.iloc[-1]['COG'])
+
+        # Calculate average movement
+        if len(last_seq) > 1:
+            lat_change = (last_seq.iloc[-1]['LAT'] - last_seq.iloc[0]['LAT']) / (len(last_seq) - 1)
+            lon_change = (last_seq.iloc[-1]['LON'] - last_seq.iloc[0]['LON']) / (len(last_seq) - 1)
+        else:
+            lat_change = 0
+            lon_change = 0
+
+        # Predict next position (simple linear extrapolation)
+        pred_lat = last_lat + lat_change * 2
+        pred_lon = last_lon + lon_change * 2
+        pred_sog = last_sog * 0.95
+        pred_cog = last_cog
+
+        return np.array([pred_lat, pred_lon, pred_sog, pred_cog])
+
+    def predict_single_vessel(self, vessel_df: pd.DataFrame,
                              sequence_length: int = 12) -> Dict:
         """Predict next position for a single vessel"""
-        if not self.is_loaded:
-            return {"error": "Model not loaded", "prediction_available": False}
-        
+
         if len(vessel_df) < sequence_length:
             return {
                 "error": f"Insufficient data. Need {sequence_length} points, got {len(vessel_df)}",
                 "prediction_available": False
             }
-        
+
         try:
             # Prepare sequence (last sequence_length rows)
             last_seq = vessel_df.tail(sequence_length)
-            
-            # Extract features
-            feature_cols = [col for col in vessel_df.columns 
-                          if col not in ['VesselName', 'MMSI', 'BaseDateTime', 'CallSign']]
-            X_seq = last_seq[feature_cols].values.reshape(1, sequence_length, -1)
-            
-            # Predict
-            predictions = self.preprocess_and_predict(X_seq)
-            pred = predictions[0]
-            
+
+            if self.is_loaded:
+                # Use real model
+                feature_cols = [col for col in vessel_df.columns
+                              if col not in ['VesselName', 'MMSI', 'BaseDateTime', 'CallSign']]
+                X_seq = last_seq[feature_cols].values.reshape(1, sequence_length, -1)
+                predictions = self.preprocess_and_predict(X_seq)
+                pred = predictions[0]
+                model_mode = "REAL"
+            else:
+                # Use demo prediction
+                logger.info("Using DEMO prediction mode (model not loaded)")
+                pred = self._generate_demo_prediction(vessel_df)
+                model_mode = "DEMO"
+
             return {
                 "prediction_available": True,
                 "predicted_lat": float(pred[0]),
@@ -231,7 +260,8 @@ class XGBoostPredictor:
                 "last_known_cog": float(last_seq.iloc[-1]['COG']),
                 "last_timestamp": str(last_seq.iloc[-1]['BaseDateTime']),
                 "vessel_name": vessel_df.iloc[-1].get('VesselName', 'Unknown'),
-                "mmsi": int(vessel_df.iloc[-1].get('MMSI', 0)) if 'MMSI' in vessel_df.columns else None
+                "mmsi": int(vessel_df.iloc[-1].get('MMSI', 0)) if 'MMSI' in vessel_df.columns else None,
+                "model_mode": model_mode
             }
         except Exception as e:
             logger.error(f"Prediction error: {e}")

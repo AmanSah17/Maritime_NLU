@@ -136,9 +136,13 @@ if "predict_vessel" in st.session_state:
             )
             
             result = response.json()
-            
+
             if result.get("prediction_available"):
-                st.success(f"✅ Prediction successful for {result['vessel_name']}")
+                model_mode = result.get("model_mode", "UNKNOWN")
+                if model_mode == "DEMO":
+                    st.warning(f"⚠️  DEMO MODE: Using simulated predictions (XGBoost model not loaded)")
+                else:
+                    st.success(f"✅ Prediction successful for {result['vessel_name']}")
                 
                 # Display prediction metrics
                 col1, col2, col3, col4 = st.columns(4)
@@ -281,10 +285,12 @@ if "predict_vessel" in st.session_state:
                     """)
                 
                 with metadata_col2:
+                    model_mode = result.get("model_mode", "UNKNOWN")
+                    model_label = "🤖 XGBoost (Real)" if model_mode == "REAL" else "📊 Demo (Simulated)"
                     st.info(f"""
                     **Prediction Parameters:**
                     - Historical Points: {seq_len}
-                    - Model: XGBoost Advanced
+                    - Model: {model_label}
                     - Prediction Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                     """)
             

@@ -356,12 +356,9 @@ def predict_trajectory(request: PredictionRequest):
     try:
         predictor = get_predictor()
 
+        # Note: predictor can still make predictions in DEMO mode even if model not loaded
         if not predictor.is_loaded:
-            return {
-                "error": "XGBoost model not available",
-                "prediction_available": False,
-                "message": "Model files not found in results/xgboost_advanced_50_vessels/"
-            }
+            logging.info("XGBoost model not loaded - using DEMO prediction mode")
 
         # Fetch vessel data from database
         target_dt = request.end_dt or "2099-12-31 23:59:59"
