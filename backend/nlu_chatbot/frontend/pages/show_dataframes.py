@@ -617,6 +617,9 @@ with col_chat:
                 # Add to chat history
                 st.session_state.chat_history.append({"role": "user", "content": vessel_query})
 
+                # Create a unique key for this query-response pair
+                query_key = f"query_{len(st.session_state.chat_history)}"
+
                 # Create elaborate, human-friendly response
                 if 'LAT' in response and 'LON' in response:
                     vessel_name = response.get('VesselName', 'Unknown Vessel')
@@ -641,11 +644,16 @@ with col_chat:
 """
 
                     st.session_state.chat_history.append({"role": "bot", "content": elaborate_response})
-                    st.session_state.query_responses[len(st.session_state.chat_history)-1] = {
+
+                    # Store response data with unique key
+                    st.session_state.query_responses[query_key] = {
                         "parsed": parsed,
                         "response": response,
                         "formatted": formatted
                     }
+
+                    # Also store in session state for easy access
+                    st.session_state['last_query_key'] = query_key
 
                     # Store track data
                     if 'track' in response and isinstance(response['track'], list):
@@ -654,11 +662,14 @@ with col_chat:
                 else:
                     error_response = "❌ No vessel data found. Please try a different query or vessel name."
                     st.session_state.chat_history.append({"role": "bot", "content": error_response})
-                    st.session_state.query_responses[len(st.session_state.chat_history)-1] = {
+
+                    # Store response data even for errors
+                    st.session_state.query_responses[query_key] = {
                         "parsed": parsed,
                         "response": response,
                         "formatted": formatted
                     }
+                    st.session_state['last_query_key'] = query_key
 
                 st.rerun()
 
@@ -671,10 +682,11 @@ with col_json:
     st.subheader("📊 Parsed Data & Entities")
 
     # Display latest response data
-    if st.session_state.chat_history:
-        latest_idx = len(st.session_state.chat_history)
-        if latest_idx in st.session_state.query_responses:
-            data = st.session_state.query_responses[latest_idx]
+    if st.session_state.chat_history and 'last_query_key' in st.session_state:
+        query_key = st.session_state.get('last_query_key')
+
+        if query_key and query_key in st.session_state.query_responses:
+            data = st.session_state.query_responses[query_key]
 
             # Create tabs for different data views
             tab_parsed, tab_entities, tab_formatted = st.tabs(["📋 Parsed JSON", "🏷️ Entities JSON", "📝 Formatted"])
@@ -682,8 +694,9 @@ with col_json:
             with tab_parsed:
                 st.markdown("**NLP Parsed Query JSON:**")
                 st.markdown('<div class="json-container">', unsafe_allow_html=True)
-                if data["parsed"]:
-                    st.json(data["parsed"])
+                parsed_data = data.get("parsed", {})
+                if parsed_data:
+                    st.json(parsed_data)
                 else:
                     st.info("No parsed data available")
                 st.markdown('</div>', unsafe_allow_html=True)
@@ -691,7 +704,7 @@ with col_json:
             with tab_entities:
                 st.markdown("**Extracted Entities JSON:**")
                 st.markdown('<div class="json-container">', unsafe_allow_html=True)
-                response_data = data["response"]
+                response_data = data.get("response", {})
 
                 if response_data:
                     # Display the full JSON data
@@ -704,7 +717,11 @@ with col_json:
             with tab_formatted:
                 st.markdown("**Formatted Response:**")
                 st.markdown('<div class="json-container">', unsafe_allow_html=True)
-                st.info(data["formatted"])
+                formatted_data = data.get("formatted", "")
+                if formatted_data:
+                    st.info(formatted_data)
+                else:
+                    st.info("No formatted response available")
                 st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.info("📌 Query responses will appear here")
