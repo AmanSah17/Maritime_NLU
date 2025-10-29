@@ -668,7 +668,7 @@ with col_chat:
             st.rerun()
 
 with col_json:
-    st.subheader("📊 Data & Entities")
+    st.subheader("📊 Parsed Data & Entities")
 
     # Display latest response data
     if st.session_state.chat_history:
@@ -677,44 +677,32 @@ with col_json:
             data = st.session_state.query_responses[latest_idx]
 
             # Create tabs for different data views
-            tab_parsed, tab_entities, tab_formatted = st.tabs(["📋 Parsed Query", "🏷️ Entities (NER)", "📝 Formatted"])
+            tab_parsed, tab_entities, tab_formatted = st.tabs(["📋 Parsed JSON", "🏷️ Entities JSON", "📝 Formatted"])
 
             with tab_parsed:
+                st.markdown("**NLP Parsed Query JSON:**")
                 st.markdown('<div class="json-container">', unsafe_allow_html=True)
-                st.json(data["parsed"])
+                if data["parsed"]:
+                    st.json(data["parsed"])
+                else:
+                    st.info("No parsed data available")
                 st.markdown('</div>', unsafe_allow_html=True)
 
             with tab_entities:
+                st.markdown("**Extracted Entities JSON:**")
                 st.markdown('<div class="json-container">', unsafe_allow_html=True)
                 response_data = data["response"]
 
-                # Display key entities as tags
                 if response_data:
-                    st.markdown("**Extracted Entities:**")
-
-                    # Vessel info
-                    if 'VesselName' in response_data:
-                        st.markdown(f'<span class="entity-tag">🚢 {response_data["VesselName"]}</span>', unsafe_allow_html=True)
-
-                    # Position
-                    if 'LAT' in response_data and 'LON' in response_data:
-                        st.markdown(f'<span class="entity-tag">📍 {response_data["LAT"]:.4f}°, {response_data["LON"]:.4f}°</span>', unsafe_allow_html=True)
-
-                    # Speed
-                    if 'SOG' in response_data:
-                        st.markdown(f'<span class="entity-tag">⚡ {response_data["SOG"]:.1f} knots</span>', unsafe_allow_html=True)
-
-                    # Course
-                    if 'COG' in response_data:
-                        st.markdown(f'<span class="entity-tag">🧭 {response_data["COG"]:.0f}°</span>', unsafe_allow_html=True)
-
-                    st.markdown("---")
-                    st.markdown("**Full JSON Data:**")
+                    # Display the full JSON data
                     st.json(response_data)
+                else:
+                    st.info("No entities extracted")
 
                 st.markdown('</div>', unsafe_allow_html=True)
 
             with tab_formatted:
+                st.markdown("**Formatted Response:**")
                 st.markdown('<div class="json-container">', unsafe_allow_html=True)
                 st.info(data["formatted"])
                 st.markdown('</div>', unsafe_allow_html=True)
