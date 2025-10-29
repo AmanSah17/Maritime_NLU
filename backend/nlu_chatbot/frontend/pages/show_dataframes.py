@@ -103,10 +103,10 @@ h1, h2, h3 {
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="defense-header"><h1>⚓ MARITIME DEFENSE MONITORING DASHBOARD</h1></div>', unsafe_allow_html=True)
-st.write("Advanced vessel tracking and time-series analysis for maritime operations")
+st.markdown('<div class="defense-header"><h1> MARITIME VESSEL - Real time Trajectory Monitoring DASHBOARD</h1></div>', unsafe_allow_html=True)
+#st.write("Advanced vessel tracking and time-series analysis for maritime operations")
 
-backend_base = "http://127.0.0.1:8000"
+backend_base = "http://127.0.0.1:8000"   #Our Backed Base url -- uvicorn 
 
 # Session state initialization
 if "chat_history" not in st.session_state:
@@ -128,8 +128,8 @@ with st.sidebar:
     # Display current user info
     user_data = st.session_state.get("user_data", {})
     st.markdown(f"**👤 User:** `{user_data.get('full_name', st.session_state.username)}`")
-    st.markdown(f"**📧 Email:** `{st.session_state.username}`")
-    st.markdown(f"**🎯 Role:** `{user_data.get('role', 'user')}`")
+    #st.markdown(f"**📧 Email:** `{st.session_state.username}`")
+    st.markdown(f"** Role:** `{user_data.get('role', 'user')}`")
 
     # Verify token is still valid
     if st.session_state.auth_token:
@@ -153,10 +153,10 @@ with st.sidebar:
             st.rerun()
 
     st.markdown("---")
-    st.markdown("### 🚢 VESSEL DIRECTORY")
+    st.markdown("### Quick search -- VESSELs")
 
     # Vessel search
-    prefix = st.text_input("Search vessels (2+ chars)", key="vessel_search")
+    prefix = st.text_input("Search vessels", key="vessel_search")
 
     @st.cache_data(ttl=60)
     def fetch_vessel_prefix(q: str, limit: int = 20):
@@ -191,7 +191,7 @@ with st.sidebar:
 # ============================================================================
 
 st.markdown("---")
-st.header("🗺️ Vessel Tracking & Map Visualization")
+st.header("Natural Language Engine for Vessel Tracking & Map Visualization")
 
 # Helper function to parse datetime
 def parse_datetime(dt_str):
@@ -496,74 +496,237 @@ def create_latlon_bar_plot(track_data, vessel_name):
 
     return fig
 
-# Input section for vessel query
-st.subheader("Query Vessel Position & Track")
-vessel_query = st.text_input("Please enter your query:", value="Show last position of US GOV VESSEL")
+# Initialize chat history in session state
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+if 'query_responses' not in st.session_state:
+    st.session_state.query_responses = {}
 
-if st.button("🔍 Get Vessel Position & Track"):
-    try:
-        with st.spinner("Querying backend..."):
-            r = requests.post(f"{backend_base}/query", json={"text": vessel_query}, timeout=15)
-            payload = r.json()
+# Add custom CSS for chat interface
+st.markdown("""
+<style>
+.chat-container {
+    background: rgba(0, 31, 63, 0.3);
+    border: 1px solid #00D9FF;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 10px 0;
+    max-height: 600px;
+    overflow-y: auto;
+}
 
-            parsed = payload.get("parsed", {})
-            response = payload.get("response", {})
-            formatted = payload.get("formatted_response", "")
+.chat-message-user {
+    background: rgba(0, 217, 255, 0.1);
+    border-left: 4px solid #00D9FF;
+    padding: 12px;
+    margin: 8px 0;
+    border-radius: 4px;
+    text-align: right;
+}
 
-            # Create tabs for different response views
-            tab1, tab2, tab3 = st.tabs(["📋 Bot Response", "📍 Last Position", "🏷️ Parsed Entities (NER)"])
+.chat-message-bot {
+    background: rgba(76, 175, 80, 0.1);
+    border-left: 4px solid #4CAF50;
+    padding: 12px;
+    margin: 8px 0;
+    border-radius: 4px;
+    text-align: left;
+}
 
-            with tab1:
-                st.subheader("Parsed Query")
-                st.json(parsed)
+.json-container {
+    background: rgba(0, 31, 63, 0.5);
+    border: 1px solid #FF9900;
+    border-radius: 8px;
+    padding: 15px;
+    max-height: 600px;
+    overflow-y: auto;
+}
 
-            with tab2:
-                st.subheader("Formatted Response")
-                st.info(formatted)
+.entity-tag {
+    display: inline-block;
+    background: #00D9FF;
+    color: #001F3F;
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin: 2px;
+    font-weight: bold;
+    font-size: 0.85em;
+}
+</style>
+""", unsafe_allow_html=True)
 
-            with tab3:
-                st.subheader("Named Entity Recognition (NER)")
-                st.json(response)
+# Main query interface with two columns
+st.markdown('<div class="defense-header"><h2>🔍 Vessel Query & NLP Engine</h2></div>', unsafe_allow_html=True)
 
-            # Check if we have position data
-            if 'LAT' in response and 'LON' in response:
-                vessel_name = response.get('VesselName', 'Unknown')
-                lat = response.get('LAT')
-                lon = response.get('LON')
-                sog = response.get('SOG')
-                cog = response.get('COG')
-                ts = response.get('BaseDateTime')
+col_chat, col_json = st.columns([1.5, 1])
 
-                st.markdown("---")
-                st.subheader(f"📍 Last Known Position: {vessel_name}")
+with col_chat:
+    st.subheader("💬 Chat Interface")
 
-                col_pos1, col_pos2 = st.columns(2)
-                with col_pos1:
-                    st.metric("Latitude", f"{lat:.4f}")
-                    st.metric("Speed (knots)", f"{sog:.1f}" if sog else "N/A")
-                with col_pos2:
-                    st.metric("Longitude", f"{lon:.4f}")
-                    st.metric("Course (°)", f"{cog:.0f}" if cog else "N/A")
+    # Display chat history
+    chat_container = st.container()
+    with chat_container:
+        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
 
-                st.write(f"**Time:** {ts}")
+        if st.session_state.chat_history:
+            for msg in st.session_state.chat_history:
+                # Handle both dict and tuple formats
+                if isinstance(msg, dict):
+                    role = msg.get('role', 'bot')
+                    content = msg.get('content', '')
+                elif isinstance(msg, (tuple, list)) and len(msg) >= 2:
+                    role = msg[0]
+                    content = msg[1]
+                else:
+                    continue
 
-                # Store track data in session state
-                if 'track' in response and isinstance(response['track'], list):
-                    st.session_state['current_track'] = response['track']
-                    st.session_state['current_vessel'] = vessel_name
-                    st.success(f"✅ Track data loaded: {len(response['track'])} positions")
+                if role == 'user':
+                    st.markdown(f'<div class="chat-message-user"><strong>You:</strong> {content}</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<div class="chat-message-bot"><strong>🤖 Engine:</strong> {content}</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="chat-message-bot"><strong>🤖 Engine:</strong> Hello! I\'m your Maritime Defense AI Assistant. Ask me about vessel positions, tracks, or maritime data. Try: "Show last position of US GOV VESSEL"</div>', unsafe_allow_html=True)
 
-            else:
-                st.error("No position data found in response")
-                st.json(response)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    except Exception as e:
-        st.error(f"Request failed: {e}")
+    # Input area
+    st.markdown("---")
+    vessel_query = st.text_input("Enter your query:", value="", placeholder="e.g., Show last position of US GOV VESSEL")
+
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        submit_btn = st.button("🔍 Query", use_container_width=True)
+    with col_btn2:
+        clear_btn = st.button("🗑️ Clear Chat", use_container_width=True)
+
+    if clear_btn:
+        st.session_state.chat_history = []
+        st.session_state.query_responses = {}
+        st.rerun()
+
+    if submit_btn and vessel_query:
+        try:
+            with st.spinner("🔄 Processing query..."):
+                r = requests.post(f"{backend_base}/query", json={"text": vessel_query}, timeout=35)
+                payload = r.json()
+
+                parsed = payload.get("parsed", {})
+                response = payload.get("response", {})
+                formatted = payload.get("formatted_response", "")
+
+                # Add to chat history
+                st.session_state.chat_history.append({"role": "user", "content": vessel_query})
+
+                # Create elaborate, human-friendly response
+                if 'LAT' in response and 'LON' in response:
+                    vessel_name = response.get('VesselName', 'Unknown Vessel')
+                    lat = response.get('LAT')
+                    lon = response.get('LON')
+                    sog = response.get('SOG', 0)
+                    cog = response.get('COG', 0)
+                    ts = response.get('BaseDateTime', 'Unknown Time')
+                    heading = response.get('Heading', 0)
+
+                    # Create elaborate response
+                    elaborate_response = f"""
+**Vessel Information:**
+- **Name:** {vessel_name}
+- **Last Position:** {lat:.4f}°N, {lon:.4f}°E
+- **Speed:** {sog:.1f} knots
+- **Course:** {cog:.0f}°
+- **Heading:** {heading:.0f}°
+- **Last Update:** {ts}
+
+**Status:** ✅ Active and tracked in our maritime defense system.
+"""
+
+                    st.session_state.chat_history.append({"role": "bot", "content": elaborate_response})
+                    st.session_state.query_responses[len(st.session_state.chat_history)-1] = {
+                        "parsed": parsed,
+                        "response": response,
+                        "formatted": formatted
+                    }
+
+                    # Store track data
+                    if 'track' in response and isinstance(response['track'], list):
+                        st.session_state['current_track'] = response['track']
+                        st.session_state['current_vessel'] = vessel_name
+                else:
+                    error_response = "❌ No vessel data found. Please try a different query or vessel name."
+                    st.session_state.chat_history.append({"role": "bot", "content": error_response})
+                    st.session_state.query_responses[len(st.session_state.chat_history)-1] = {
+                        "parsed": parsed,
+                        "response": response,
+                        "formatted": formatted
+                    }
+
+                st.rerun()
+
+        except Exception as e:
+            error_msg = f"⚠️ Error processing query: {str(e)}"
+            st.session_state.chat_history.append({"role": "bot", "content": error_msg})
+            st.rerun()
+
+with col_json:
+    st.subheader("📊 Data & Entities")
+
+    # Display latest response data
+    if st.session_state.chat_history:
+        latest_idx = len(st.session_state.chat_history)
+        if latest_idx in st.session_state.query_responses:
+            data = st.session_state.query_responses[latest_idx]
+
+            # Create tabs for different data views
+            tab_parsed, tab_entities, tab_formatted = st.tabs(["📋 Parsed Query", "🏷️ Entities (NER)", "📝 Formatted"])
+
+            with tab_parsed:
+                st.markdown('<div class="json-container">', unsafe_allow_html=True)
+                st.json(data["parsed"])
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            with tab_entities:
+                st.markdown('<div class="json-container">', unsafe_allow_html=True)
+                response_data = data["response"]
+
+                # Display key entities as tags
+                if response_data:
+                    st.markdown("**Extracted Entities:**")
+
+                    # Vessel info
+                    if 'VesselName' in response_data:
+                        st.markdown(f'<span class="entity-tag">🚢 {response_data["VesselName"]}</span>', unsafe_allow_html=True)
+
+                    # Position
+                    if 'LAT' in response_data and 'LON' in response_data:
+                        st.markdown(f'<span class="entity-tag">📍 {response_data["LAT"]:.4f}°, {response_data["LON"]:.4f}°</span>', unsafe_allow_html=True)
+
+                    # Speed
+                    if 'SOG' in response_data:
+                        st.markdown(f'<span class="entity-tag">⚡ {response_data["SOG"]:.1f} knots</span>', unsafe_allow_html=True)
+
+                    # Course
+                    if 'COG' in response_data:
+                        st.markdown(f'<span class="entity-tag">🧭 {response_data["COG"]:.0f}°</span>', unsafe_allow_html=True)
+
+                    st.markdown("---")
+                    st.markdown("**Full JSON Data:**")
+                    st.json(response_data)
+
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            with tab_formatted:
+                st.markdown('<div class="json-container">', unsafe_allow_html=True)
+                st.info(data["formatted"])
+                st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.info("📌 Query responses will appear here")
+    else:
+        st.info("📌 Submit a query to see extracted data and entities")
     
 
 # Visualization section
 st.markdown("---")
-st.markdown('<div class="defense-header"><h2>� TIME SERIES DASHBOARD & VISUALIZATIONS</h2></div>', unsafe_allow_html=True)
+st.markdown('<div class="defense-header"><h2> Historical Track DASHBOARD </h2></div>', unsafe_allow_html=True)
 
 if 'current_track' in st.session_state and st.session_state['current_track']:
     track_data = st.session_state['current_track']
@@ -732,10 +895,7 @@ if 'current_track' in st.session_state and st.session_state['current_track']:
             )
 
 else:
-    st.info("🔍 Query a vessel first to see visualizations and time series data")
+    st.info("Pleas enter a vessel name or your Query  to see visualizations and time series data")
 
-# SQL Index Creation (to be run in the database, not in Streamlit)
-"""
-CREATE INDEX IF NOT EXISTS idx_vessel_mmsi ON vessel_data(MMSI);
-CREATE INDEX IF NOT EXISTS idx_vessel_basedatetime ON vessel_data(BaseDateTime);
-"""
+
+

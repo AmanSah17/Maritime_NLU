@@ -97,7 +97,7 @@ else:
     
     with tab_login:
         st.markdown('<div class="auth-container">', unsafe_allow_html=True)
-        st.markdown('<div class="auth-header"><h2>⚓ Maritime Defense Dashboard</h2><p>Secure Login</p></div>', unsafe_allow_html=True)
+        st.markdown('<div class="auth-header"><h2> Maritime Defense Dashboard</h2><p>Secure Login</p></div>', unsafe_allow_html=True)
 
         email = st.text_input("📧 Email Address", key="login_email")
         password = st.text_input("🔐 Password", type="password", key="login_password")
@@ -125,7 +125,7 @@ else:
                         # Save to cookies for persistence across browser refresh
                         AuthManager.save_to_cookies()
 
-                        st.success(f"✅ Welcome, {user_data.get('full_name', email)}!")
+                        st.success(f" Welcome, {user_data.get('full_name', email)}!")
                         st.info("🍪 Your session has been saved. You'll stay logged in even after refreshing the page!")
                         st.balloons()
 
@@ -144,16 +144,11 @@ else:
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Demo credentials
-        st.info("""
-        **Demo Credentials:**
-        - Email: `amansah1717@gmail.com`
-        - Password: `maritime_defense_2025`
-        """)
+        
     
     with tab_register:
         st.markdown('<div class="auth-container">', unsafe_allow_html=True)
-        st.markdown('<div class="auth-header"><h2>⚓ Create Account</h2><p>Join Maritime Defense</p></div>', unsafe_allow_html=True)
+        st.markdown('<div class="auth-header"><h2> Create Account</h2><p>Register for Maritime Defense Database</p></div>', unsafe_allow_html=True)
         
         full_name = st.text_input("👤 Full Name", key="reg_fullname")
         email = st.text_input("📧 Email Address", key="reg_email")
